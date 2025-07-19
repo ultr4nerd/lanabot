@@ -244,6 +244,45 @@ class DatabaseManager:
             logger.error(f"Error calculating daily expenses for {phone_number}: {e}")
             return Decimal("100")  # Safe fallback
 
+    async def search_transactions(self, phone_number: str, search_term: str, transaction_type: str = None) -> list[Transaction]:
+        """Search transactions by description and optionally by type."""
+        try:
+            query = (
+                self.client.table("transactions")
+                .select("*")
+                .eq("phone_number", phone_number)
+                .ilike("description", f"%{search_term}%")  # Case-insensitive search
+                .order("created_at", desc=True)
+                .limit(20)
+            )
+            
+            # Add transaction type filter if specified
+            if transaction_type:
+                query = query.eq("transaction_type", transaction_type)
+            
+            result = query.execute()
+
+            transactions = []
+            for data in result.data:
+                transaction = Transaction(
+                    id=data["id"],
+                    phone_number=data["phone_number"],
+                    transaction_type=TransactionType(data["transaction_type"]),
+                    amount=Decimal(str(data["amount"])),
+                    description=data["description"],
+                    created_at=datetime.fromisoformat(data["created_at"]),
+                    updated_at=datetime.fromisoformat(data["updated_at"])
+                    if data.get("updated_at")
+                    else None,
+                )
+                transactions.append(transaction)
+
+            return transactions
+
+        except Exception as e:
+            logger.error(f"Error searching transactions for {phone_number}: {e}")
+            return []
+
     async def check_low_balance_alert(self, phone_number: str) -> bool:
         """Check if balance is below alert threshold."""
         try:

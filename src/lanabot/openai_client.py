@@ -337,6 +337,11 @@ Aquí tienes tu saldo actual, jefe 📊
                 else:
                     base_message += f"\n🚨 ¡Sin fondos para gastos!"
 
+            # Add intelligent financial tip
+            tip = self._generate_financial_tip(balance_info)
+            if tip:
+                base_message += f"\n\n{tip}"
+
             # Add low balance warning if needed
             settings = get_settings()
             if balance_info["current_balance"] < settings.minimum_balance_alert:
@@ -347,3 +352,68 @@ Aquí tienes tu saldo actual, jefe 📊
         except Exception as e:
             logger.error(f"Error generating response message: {e}")
             return "¡Órale! Algo salió mal, pero no te preocupes. Intenta de nuevo 🤔"
+
+    def _generate_financial_tip(self, balance_info: dict) -> str:
+        """Generate intelligent financial tips based on current situation."""
+        try:
+            current_balance = balance_info.get("current_balance", 0)
+            total_sales = balance_info.get("total_sales", 0)
+            total_expenses = balance_info.get("total_expenses", 0)
+            days_remaining = balance_info.get("days_remaining")
+            
+            # Calculate some ratios for insights
+            if total_sales > 0:
+                expense_ratio = total_expenses / total_sales
+            else:
+                expense_ratio = 0
+            
+            # Generate tips based on different scenarios
+            tips = []
+            
+            # Low balance tips
+            if current_balance < 200:
+                tips.extend([
+                    "💡 Tip: Con poco efectivo, enfócate en productos de alta rotación",
+                    "💡 Tip: ¿Qué tal promocionar algo para generar ventas rápidas?",
+                    "💡 Tip: Revisa si puedes posponer compras no urgentes"
+                ])
+            
+            # High expense ratio tips
+            elif expense_ratio > 0.8:
+                tips.extend([
+                    "💡 Tip: Tus gastos están altos. ¿Puedes reducir algún costo?",
+                    "💡 Tip: Compara precios antes de tu próximo surtido",
+                    "💡 Tip: Considera comprar solo lo indispensable esta semana"
+                ])
+            
+            # Good balance tips
+            elif current_balance > 1000 and total_sales > total_expenses:
+                tips.extend([
+                    "💡 Tip: ¡Excelente! Tienes buen flujo, considera invertir en más inventario",
+                    "💡 Tip: Buen momento para planear promociones o descuentos",
+                    "💡 Tip: ¡Va muy bien! Mantén este ritmo de ventas"
+                ])
+            
+            # Cash flow tips
+            elif days_remaining and days_remaining < 3:
+                tips.extend([
+                    "💡 Tip: Te queda efectivo para pocos días, planea nuevas ventas",
+                    "💡 Tip: ¿Tienes productos que puedas promocionar hoy?",
+                    "💡 Tip: Considera cobrar las cuentas pendientes"
+                ])
+            
+            # General tips
+            else:
+                tips.extend([
+                    "💡 Tip: Registra tus transacciones cada hora para mejor control",
+                    "💡 Tip: Los fines de semana suelen tener más ventas, ¡prepárate!",
+                    "💡 Tip: Mantén un registro diario para identificar patrones"
+                ])
+            
+            # Return a random tip
+            import random
+            return random.choice(tips) if tips else ""
+            
+        except Exception as e:
+            logger.error(f"Error generating financial tip: {e}")
+            return ""

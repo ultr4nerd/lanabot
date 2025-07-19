@@ -335,6 +335,24 @@ async def process_message(message: WhatsAppMessage) -> None:
 
         text_to_process = message.content
 
+        # For text messages, check special commands first
+        if message.message_type == "text" and text_to_process:
+            # Check if it's a welcome/help inquiry
+            if is_welcome_inquiry(text_to_process):
+                await handle_welcome_inquiry(message.from_number)
+                return
+
+            # Check if it's a search inquiry
+            is_search, search_term, transaction_type = is_search_inquiry(text_to_process)
+            if is_search:
+                await handle_search_inquiry(message.from_number, search_term, transaction_type)
+                return
+
+            # Check if it's a balance inquiry
+            if is_balance_inquiry(text_to_process):
+                await handle_balance_inquiry(message.from_number)
+                return
+
         # If it's an audio message, transcribe it first
         if message.message_type == "audio" and message.audio_url:
             # Download the audio file from Twilio
@@ -436,11 +454,6 @@ async def process_message(message: WhatsAppMessage) -> None:
             logger.warning(f"No text content for message {message.message_id}")
             return
 
-        # Check if it's a balance inquiry
-        if is_balance_inquiry(text_to_process):
-            await handle_balance_inquiry(message.from_number)
-            return
-
         # Process transaction with OpenAI
         processed_transaction = await app.state.openai_client.process_transaction_text(
             text_to_process
@@ -464,6 +477,55 @@ async def process_message(message: WhatsAppMessage) -> None:
         )
 
 
+def is_welcome_inquiry(text: str) -> bool:
+    """Check if the message is a greeting or help request."""
+    welcome_keywords = [
+        "hola", "hello", "hi", "buenas", "buenos días", "buenas tardes", "buenas noches",
+        "ayuda", "help", "cómo funciona", "como funciona", "qué hace", "que hace",
+        "instrucciones", "tutorial", "empezar", "iniciar", "comenzar"
+    ]
+    
+    text_lower = text.lower().strip()
+    return any(keyword in text_lower for keyword in welcome_keywords)
+
+
+def is_search_inquiry(text: str) -> tuple[bool, str, str]:
+    """Check if the message is a search request. Returns (is_search, search_term, transaction_type)."""
+    text_lower = text.lower().strip()
+    
+    # Search patterns for expenses
+    expense_patterns = [
+        "cuánto gasté en", "cuanto gaste en", "gastos de", "gasté de", "gaste de",
+        "compré de", "compre de", "cuánto pagué", "cuanto pague"
+    ]
+    
+    # Search patterns for sales  
+    sales_patterns = [
+        "cuánto vendí de", "cuanto vendi de", "ventas de", "vendí de", "vendi de",
+        "cuánto gané", "cuanto gane", "cuánto saqué", "cuanto saque"
+    ]
+    
+    # Check for expense searches
+    for pattern in expense_patterns:
+        if pattern in text_lower:
+            # Extract search term after the pattern
+            search_term = text_lower.split(pattern, 1)[1].strip()
+            # Remove common endings like "?", "hoy", "ayer"
+            search_term = search_term.replace("?", "").replace("hoy", "").replace("ayer", "").strip()
+            if search_term:
+                return True, search_term, "gasto"
+    
+    # Check for sales searches
+    for pattern in sales_patterns:
+        if pattern in text_lower:
+            search_term = text_lower.split(pattern, 1)[1].strip()
+            search_term = search_term.replace("?", "").replace("hoy", "").replace("ayer", "").strip()
+            if search_term:
+                return True, search_term, "venta"
+    
+    return False, "", ""
+
+
 def is_balance_inquiry(text: str) -> bool:
     """Check if the message is asking for balance information."""
     balance_keywords = [
@@ -479,6 +541,76 @@ def is_balance_inquiry(text: str) -> bool:
 
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in balance_keywords)
+
+
+async def handle_search_inquiry(phone_number: str, search_term: str, transaction_type: str) -> None:
+    """Handle search requests for transactions."""
+    try:
+        transactions = await app.state.db.search_transactions(phone_number, search_term, transaction_type)
+        
+        if not transactions:
+            await app.state.whatsapp_client.send_message(
+                phone_number,
+                f"No encontré transacciones de {transaction_type} con '{search_term}' 🔍\n\nPrueba con otros términos o revisa tus registros."
+            )
+            return
+
+        # Calculate total
+        total = sum(t.amount for t in transactions)
+        count = len(transactions)
+        
+        # Generate response
+        tipo_es = "gastos" if transaction_type == "gasto" else "ventas"
+        
+        response = f"🔍 **Búsqueda: {tipo_es} de '{search_term}'**\n\n"
+        response += f"💰 Total: ${total:.2f} MXN ({count} transacciones)\n\n"
+        
+        # Show recent transactions (max 5)
+        response += "📋 **Últimas transacciones:**\n"
+        for i, transaction in enumerate(transactions[:5]):
+            date = transaction.created_at.strftime("%d/%m")
+            response += f"• {date}: ${transaction.amount} - {transaction.description}\n"
+        
+        if len(transactions) > 5:
+            response += f"\n... y {len(transactions) - 5} más"
+
+        await app.state.whatsapp_client.send_message(phone_number, response)
+        
+    except Exception as e:
+        logger.error(f"Error handling search inquiry for {phone_number}: {e}")
+        await app.state.whatsapp_client.send_message(
+            phone_number,
+            f"¡Órale! No pude buscar '{search_term}'. Intenta de nuevo 🔍",
+        )
+
+
+async def handle_welcome_inquiry(phone_number: str) -> None:
+    """Handle welcome/help requests."""
+    try:
+        welcome_message = """¡Órale! Soy LanaBot 🤖, tu asistente de caja en WhatsApp
+
+📝 **¿Cómo funciono?**
+• **Ventas**: "Vendí 3 refrescos a 15 pesos cada uno"
+• **Gastos**: "Compré mercancía por 200 pesos"
+• **Saldo inicial**: "Empiezo el día con 500 pesos"
+• **Consultar**: "¿Cuánto tengo?" o "saldo"
+• **Tickets**: Manda foto de tu ticket y lo proceso automáticamente
+
+🎯 **Tips:**
+• Usa audios o texto, como prefieras
+• Te digo cuántos días te rinde tu efectivo
+• Si cometo errores, responde VENTA o GASTO para corregir
+
+¡Empecemos! Prueba decirme una venta o gasto 💰"""
+
+        await app.state.whatsapp_client.send_message(phone_number, welcome_message)
+        
+    except Exception as e:
+        logger.error(f"Error handling welcome inquiry for {phone_number}: {e}")
+        await app.state.whatsapp_client.send_message(
+            phone_number,
+            "¡Hola! Soy LanaBot, te ayudo con tu caja. Prueba: 'Vendí 3 refrescos a 10 pesos' 🤖",
+        )
 
 
 async def handle_balance_inquiry(phone_number: str) -> None:
