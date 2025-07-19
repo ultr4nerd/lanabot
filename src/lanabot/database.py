@@ -97,7 +97,7 @@ class DatabaseManager:
 
             total_sales = Decimal("0")
             total_expenses = Decimal("0")
-            last_updated = datetime.utcnow()
+            last_updated = None
 
             for transaction in transactions:
                 amount = Decimal(str(transaction["amount"]))
@@ -108,8 +108,13 @@ class DatabaseManager:
 
                 # Update last_updated with the most recent transaction
                 transaction_date = datetime.fromisoformat(transaction["created_at"])
-                if transaction_date > last_updated:
+                if last_updated is None or transaction_date > last_updated:
                     last_updated = transaction_date
+
+            # If no transactions, use current time
+            if last_updated is None:
+                from datetime import timezone
+                last_updated = datetime.now(timezone.utc)
 
             current_balance = total_sales - total_expenses
 
