@@ -121,9 +121,42 @@ async def process_message(message: WhatsAppMessage) -> None:
         
         # If it's an audio message, transcribe it first
         if message.message_type == "audio" and message.audio_url:
-            text_to_process = await app.state.openai_client.transcribe_audio(
-                message.audio_url
-            )
+            # Download the audio file from Twilio
+            audio_file_path = await app.state.whatsapp_client.download_media(message.audio_url)
+            
+            if not audio_file_path:
+                await app.state.whatsapp_client.send_message(
+                    message.from_number,
+                    "¡Órale! No pude descargar el audio. ¿Puedes intentar de nuevo? 🎤",
+                )
+                return
+            
+            try:
+                text_to_process = await app.state.openai_client.transcribe_audio(
+                    audio_file_path
+                )
+                
+                # Clean up temporary file
+                import os
+                try:
+                    os.unlink(audio_file_path)
+                except Exception:
+                    pass  # Ignore cleanup errors
+                
+            except Exception as e:
+                logger.error(f"Error transcribing audio: {e}")
+                # Clean up temporary file on error too
+                import os
+                try:
+                    os.unlink(audio_file_path)
+                except Exception:
+                    pass
+                
+                await app.state.whatsapp_client.send_message(
+                    message.from_number,
+                    "¡Órale! No pude entender el audio. ¿Puedes intentar de nuevo o escribir tu mensaje? 🎤",
+                )
+                return
             
             if not text_to_process:
                 await app.state.whatsapp_client.send_message(
