@@ -1,0 +1,98 @@
+[project]
+name = "lanabot"
+version = "0.1.0"
+description = "Bot de WhatsApp para registro de ventas de tienditas mexicanas"
+authors = [
+    {name = "Mauricio Chavez", email = "mauriciochavezolea@gmail.com"},
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "openai>=1.3.0",
+    "supabase>=2.0.0",
+    "python-multipart>=0.0.6",
+    "pydantic>=2.5.0",
+    "httpx>=0.25.0",
+    "python-dotenv>=1.0.0",
+    "pydantic-settings>=2.1.0",
+    "twilio>=8.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.6",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.25.0",
+]
+
+[project.scripts]
+dev = "lanabot.dev:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+    "ARG001", # unused-function-args
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "TID", # flake8-tidy-imports
+    "Q", # flake8-quotes
+    "FUP", # pyupgrade
+    "PTH", # flake8-use-pathlib
+    "ERA", # flake8-eradicate
+    "PD", # pandas-vet
+    "PGH", # pygrep-hooks
+    "RUF", # Ruff-specific rules
+    "NPY", # NumPy specific rules
+    "PERF", # Perflint
+]
+ignore = [
+    "B008", # Do not perform function calls in argument defaults
+    "B904", # Use raise from to specify exception cause
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.isort]
+force-single-line = false
+force-sort-within-sections = false
+lines-after-imports = 2
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "--strict-markers --disable-warnings --cov=src/lanabot --cov-report=term-missing"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["src/lanabot"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
