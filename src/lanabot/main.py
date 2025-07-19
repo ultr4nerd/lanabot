@@ -335,24 +335,6 @@ async def process_message(message: WhatsAppMessage) -> None:
 
         text_to_process = message.content
 
-        # For text messages, check special commands first
-        if message.message_type == "text" and text_to_process:
-            # Check if it's a welcome/help inquiry
-            if is_welcome_inquiry(text_to_process):
-                await handle_welcome_inquiry(message.from_number)
-                return
-
-            # Check if it's a search inquiry
-            is_search, search_term, transaction_type = is_search_inquiry(text_to_process)
-            if is_search:
-                await handle_search_inquiry(message.from_number, search_term, transaction_type)
-                return
-
-            # Check if it's a balance inquiry
-            if is_balance_inquiry(text_to_process):
-                await handle_balance_inquiry(message.from_number)
-                return
-
         # If it's an audio message, transcribe it first
         if message.message_type == "audio" and message.audio_url:
             # Download the audio file from Twilio
@@ -452,6 +434,23 @@ async def process_message(message: WhatsAppMessage) -> None:
         # If no text content, skip processing
         if not text_to_process:
             logger.warning(f"No text content for message {message.message_id}")
+            return
+
+        # Now check for special commands (works for both text and transcribed audio)
+        # Check if it's a welcome/help inquiry
+        if is_welcome_inquiry(text_to_process):
+            await handle_welcome_inquiry(message.from_number)
+            return
+
+        # Check if it's a search inquiry
+        is_search, search_term, transaction_type = is_search_inquiry(text_to_process)
+        if is_search:
+            await handle_search_inquiry(message.from_number, search_term, transaction_type)
+            return
+
+        # Check if it's a balance inquiry
+        if is_balance_inquiry(text_to_process):
+            await handle_balance_inquiry(message.from_number)
             return
 
         # Process transaction with OpenAI
