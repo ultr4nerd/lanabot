@@ -1,10 +1,12 @@
-"""Twilio WhatsApp API client using official SDK."""
+"""WhatsApp Business Cloud API client for Meta."""
 
+import hashlib
+import hmac
 import logging
+import tempfile
 from typing import Optional
 
-from twilio.request_validator import RequestValidator
-from twilio.rest import Client
+import httpx
 
 from .config import get_settings
 
@@ -12,94 +14,128 @@ logger = logging.getLogger(__name__)
 
 
 class WhatsAppClient:
-    """Twilio WhatsApp API client using official SDK."""
+    """WhatsApp Business Cloud API client for Meta."""
 
     def __init__(self) -> None:
-        """Initialize Twilio WhatsApp client."""
+        """Initialize Meta WhatsApp client."""
         self.settings = get_settings()
-        self.client = Client(
-            self.settings.twilio_account_sid,
-            self.settings.twilio_auth_token
-        )
-        self.validator = RequestValidator(self.settings.twilio_auth_token)
+        self.base_url = "https://graph.facebook.com/v18.0"
+        self.headers = {
+            "Authorization": f"Bearer {self.settings.meta_access_token}",
+            "Content-Type": "application/json"
+        }
 
     async def send_message(self, to: str, message: str) -> bool:
-        """Send a text message via WhatsApp using Twilio SDK."""
+        """Send a text message via WhatsApp using Meta Cloud API."""
         try:
-            # Ensure phone number has whatsapp: prefix for Twilio
-            if not to.startswith("whatsapp:"):
-                to = f"whatsapp:{to}"
+            # Remove whatsapp: prefix if present and ensure proper format
+            phone_number = to.replace("whatsapp:", "").replace("+", "")
+            
+            url = f"{self.base_url}/{self.settings.meta_phone_number_id}/messages"
+            
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "text",
+                "text": {
+                    "body": message
+                }
+            }
 
-            # Use Twilio SDK to send message
-            message_instance = self.client.messages.create(
-                from_=f"whatsapp:{self.settings.twilio_whatsapp_number}",
-                to=to,
-                body=message
-            )
-
-            logger.info(f"Message sent successfully to {to}: {message_instance.sid}")
-            return True
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=self.headers, json=payload)
+                
+            if response.status_code == 200:
+                result = response.json()
+                message_id = result.get("messages", [{}])[0].get("id")
+                logger.info(f"Message sent successfully to {to}: {message_id}")
+                return True
+            else:
+                logger.error(f"Error sending message to {to}: {response.status_code} - {response.text}")
+                return False
 
         except Exception as e:
             logger.error(f"Error sending message to {to}: {e}")
             return False
 
-    async def download_media(self, media_url: str) -> Optional[str]:
-        """Download media file from Twilio URL with authentication."""
+    def verify_webhook_signature(self, body: bytes, signature: str) -> bool:
+        """Verify Meta webhook signature."""
         try:
-            import httpx
-            import base64
+            expected_signature = hmac.new(
+                self.settings.meta_app_secret.encode(),
+                body,
+                hashlib.sha256
+            ).hexdigest()
             
-            # Create Basic Auth header for Twilio
-            auth_string = f"{self.settings.twilio_account_sid}:{self.settings.twilio_auth_token}"
-            auth_bytes = auth_string.encode('ascii')
-            auth_base64 = base64.b64encode(auth_bytes).decode('ascii')
+            # Meta sends signature as 'sha256=<signature>'
+            signature_without_prefix = signature.replace("sha256=", "")
             
-            headers = {
-                "Authorization": f"Basic {auth_base64}"
-            }
+            return hmac.compare_digest(expected_signature, signature_without_prefix)
             
-            # Download the media file with authentication and follow redirects
-            async with httpx.AsyncClient(follow_redirects=True) as client:
-                response = await client.get(media_url, headers=headers)
-                response.raise_for_status()
-                
-                # Return the audio content as bytes
-                audio_content = response.content
-                logger.info(f"Downloaded media successfully: {len(audio_content)} bytes")
-                
-                # Write to temp file with appropriate extension
-                import tempfile
-                import os
-                
-                # Determine file extension from URL or content type
-                if 'image' in media_url or any(fmt in media_url.lower() for fmt in ['.jpg', '.jpeg', '.png']):
-                    suffix = '.jpg'
-                elif 'audio' in media_url or '.ogg' in media_url.lower():
-                    suffix = '.ogg'
-                else:
-                    suffix = '.bin'  # fallback
-                
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-                    temp_file.write(audio_content)
-                    temp_path = temp_file.name
-                
-                return temp_path
-
         except Exception as e:
-            logger.error(f"Error downloading media from {media_url}: {e}")
-            return None
-
-    async def mark_message_read(self, message_id: str) -> bool:
-        """Mark a message as read (Not supported in Twilio WhatsApp)."""
-        # Twilio WhatsApp doesn't support read receipts like Meta's API
-        logger.info(f"Read receipt not supported for message {message_id}")
-        return True
-
-    def verify_webhook(self, request_url: str, post_body: str, signature: str) -> bool:
-        """Verify Twilio webhook signature using SDK."""
-        try:
-            return self.validator.validate(request_url, post_body, signature)
-        except Exception as e:
-            logger.error(f"Error verifying webhook: {e}")
+            logger.error(f"Error verifying webhook signature: {e}")
             return False
+
+    async def download_media(self, media_id: str) -> Optional[str]:
+        """Download media file from Meta and return local path."""
+        try:
+            logger.info(f"Downloading media from Meta: {media_id}")
+            
+            # Get media info first
+            media_info_url = f"{self.base_url}/{media_id}"
+            
+            async with httpx.AsyncClient() as client:
+                # Get media info first
+                info_response = await client.get(media_info_url, headers=self.headers)
+                
+                if info_response.status_code != 200:
+                    logger.error(f"Failed to get media info: {info_response.status_code}")
+                    return None
+                
+                media_info = info_response.json()
+                actual_media_url = media_info.get("url")
+                
+                if not actual_media_url:
+                    logger.error("No media URL found in response")
+                    return None
+                
+                # Download the actual media file
+                media_response = await client.get(actual_media_url, headers=self.headers)
+                
+            if media_response.status_code == 200:
+                # Determine file extension from mime type
+                mime_type = media_info.get("mime_type", "")
+                
+                if "audio" in mime_type:
+                    if "ogg" in mime_type:
+                        extension = ".ogg"
+                    elif "mpeg" in mime_type or "mp3" in mime_type:
+                        extension = ".mp3"
+                    elif "wav" in mime_type:
+                        extension = ".wav"
+                    else:
+                        extension = ".ogg"  # Default for WhatsApp audio
+                elif "image" in mime_type:
+                    if "jpeg" in mime_type:
+                        extension = ".jpg"
+                    elif "png" in mime_type:
+                        extension = ".png"
+                    else:
+                        extension = ".jpg"  # Default
+                else:
+                    extension = ".tmp"
+                
+                # Create temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp_file:
+                    tmp_file.write(media_response.content)
+                    file_path = tmp_file.name
+                
+                logger.info(f"Downloaded media successfully: {len(media_response.content)} bytes")
+                return file_path
+            else:
+                logger.error(f"Failed to download media: {media_response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error downloading media: {e}")
+            return None

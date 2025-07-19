@@ -23,10 +23,14 @@ class Settings(BaseSettings):
     supabase_url: str = Field(..., description="Supabase project URL")
     supabase_key: str = Field(..., description="Supabase anon key")
 
-    # Twilio WhatsApp Configuration
-    twilio_account_sid: str = Field(..., description="Twilio Account SID")
-    twilio_auth_token: str = Field(..., description="Twilio Auth Token")
-    twilio_whatsapp_number: str = Field(..., description="Twilio WhatsApp number")
+    # WhatsApp Business Cloud API Configuration (Meta)
+    meta_access_token: str = Field(..., description="Meta Access Token")
+    meta_phone_number_id: str = Field(..., description="Meta Phone Number ID")
+    meta_business_account_id: str = Field(..., description="Meta Business Account ID")
+    meta_app_id: str = Field(..., description="Meta App ID")
+    meta_app_secret: str = Field(..., description="Meta App Secret")
+    meta_webhook_verify_token: str = Field(..., description="Meta Webhook Verify Token")
+    meta_whatsapp_number: str = Field(..., description="Meta WhatsApp number")
 
     # Application Configuration
     port: int = Field(default=8000, description="Application port")

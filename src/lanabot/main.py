@@ -53,65 +53,89 @@ async def health_check():
 
 
 @app.get("/webhook")
-async def verify_webhook():
-    """Webhook verification endpoint for Twilio (not used but kept for compatibility)."""
-    return {"status": "webhook endpoint ready"}
+async def verify_webhook(
+    hub_mode: str = Query(..., alias="hub.mode"),
+    hub_verify_token: str = Query(..., alias="hub.verify_token"),
+    hub_challenge: str = Query(..., alias="hub.challenge")
+):
+    """Webhook verification endpoint for Meta WhatsApp."""
+    settings = get_settings()
+    
+    if hub_mode == "subscribe" and hub_verify_token == settings.meta_webhook_verify_token:
+        logger.info("Webhook verified successfully")
+        return PlainTextResponse(hub_challenge)
+    else:
+        logger.warning("Webhook verification failed")
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 @app.post("/webhook")
 async def webhook_handler(request: Request):
-    """Handle incoming Twilio WhatsApp webhook messages."""
+    """Handle incoming Meta WhatsApp webhook messages."""
     try:
-        # Get form data first (Twilio sends form-encoded data)
-        form_data = await request.form()
+        # Get JSON data (Meta sends JSON, not form data)
+        body = await request.body()
+        data = await request.json()
         
         # Skip signature verification for now to debug
         # TODO: Implement proper signature verification later
-        logger.info(f"Received webhook from Twilio: {dict(form_data)}")
+        logger.info(f"Received webhook from Meta: {data}")
         
-        # Extract message information from Twilio webhook
-        message_sid = form_data.get("MessageSid")
-        from_number = form_data.get("From", "").replace("whatsapp:", "")
-        to_number = form_data.get("To", "").replace("whatsapp:", "")
-        message_body = form_data.get("Body", "")
-        media_url = form_data.get("MediaUrl0")  # For audio/media files
-        media_content_type = form_data.get("MediaContentType0", "")
-        
-        if not all([message_sid, from_number]):
-            logger.warning("Missing required message fields from Twilio")
-            return {"status": "ok"}
-        
-        # Determine message type
-        message_type = "text"
-        audio_url = None
-        image_url = None
-        
-        if media_url:
-            if "audio" in media_content_type:
-                message_type = "audio"
-                audio_url = media_url
-            elif "image" in media_content_type:
-                message_type = "image"
-                image_url = media_url
-        
-        # Create WhatsApp message object
-        whatsapp_message = WhatsAppMessage(
-            message_id=message_sid,
-            from_number=from_number,
-            message_type=message_type,
-            content=message_body if message_type == "text" else None,
-            audio_url=audio_url,
-            image_url=image_url,
-            timestamp=datetime.utcnow(),
-        )
-        
-        # Process the message
-        await process_message(whatsapp_message)
+        # Handle webhook verification (Meta sends this on setup)
+        if data.get("object") == "whatsapp_business_account":
+            entries = data.get("entry", [])
+            
+            for entry in entries:
+                changes = entry.get("changes", [])
+                
+                for change in changes:
+                    if change.get("field") == "messages":
+                        value = change.get("value", {})
+                        messages = value.get("messages", [])
+                        
+                        for message in messages:
+                            # Extract message information from Meta webhook
+                            message_id = message.get("id")
+                            from_number = message.get("from")
+                            timestamp = message.get("timestamp")
+                            
+                            # Determine message type and content
+                            message_type = message.get("type", "text")
+                            content = None
+                            audio_url = None
+                            image_url = None
+                            
+                            if message_type == "text":
+                                content = message.get("text", {}).get("body")
+                            elif message_type == "audio":
+                                audio_info = message.get("audio", {})
+                                audio_url = audio_info.get("id")  # Media ID for Meta
+                            elif message_type == "image":
+                                image_info = message.get("image", {})
+                                image_url = image_info.get("id")  # Media ID for Meta
+                            
+                            if not all([message_id, from_number]):
+                                logger.warning("Missing required message fields from Meta")
+                                continue
+                            
+                            # Create WhatsApp message object
+                            whatsapp_message = WhatsAppMessage(
+                                message_id=message_id,
+                                from_number=from_number,
+                                message_type=message_type,
+                                content=content,
+                                audio_url=audio_url,
+                                image_url=image_url,
+                                timestamp=datetime.fromtimestamp(int(timestamp)) if timestamp else datetime.utcnow(),
+                            )
+                            
+                            # Process the message
+                            await process_message(whatsapp_message)
         
         return {"status": "ok"}
     
     except Exception as e:
-        logger.error(f"Error processing Twilio webhook: {e}")
+        logger.error(f"Error processing Meta webhook: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
