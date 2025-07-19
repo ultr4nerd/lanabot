@@ -21,25 +21,17 @@ class OpenAIClient:
         settings = get_settings()
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-    async def transcribe_audio(self, audio_url: str) -> Optional[str]:
-        """Transcribe audio from WhatsApp to text using Whisper."""
+    async def transcribe_audio(self, audio_file_path: str) -> Optional[str]:
+        """Transcribe audio file to text using Whisper."""
         try:
-            # Download audio file
-            async with httpx.AsyncClient() as client:
-                response = await client.get(audio_url)
-                response.raise_for_status()
-                audio_content = response.content
-
-            # Create a temporary file-like object for the audio
-            from io import BytesIO
-
-            audio_file = BytesIO(audio_content)
-            audio_file.name = "audio.ogg"  # WhatsApp typically sends OGG files
-
-            # Transcribe using Whisper
-            transcript = await self.client.audio.transcriptions.create(
-                model="whisper-1", file=audio_file, language="es"
-            )
+            # Open the audio file directly from the local path
+            with open(audio_file_path, "rb") as audio_file:
+                # Transcribe using Whisper
+                transcript = await self.client.audio.transcriptions.create(
+                    model="whisper-1", 
+                    file=audio_file, 
+                    language="es"
+                )
 
             return transcript.text
 
