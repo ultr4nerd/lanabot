@@ -25,11 +25,35 @@ class WhatsAppClient:
             "Content-Type": "application/json"
         }
 
+    def normalize_mexican_phone_number(self, phone_number: str) -> str:
+        """Normalize Mexican phone numbers for WhatsApp Business API."""
+        # Remove any non-digit characters
+        clean_number = ''.join(filter(str.isdigit, phone_number))
+        
+        # Handle Mexican mobile numbers
+        if clean_number.startswith('521'):
+            # Remove the '1' from Mexican mobile format
+            # 521XXXXXXXX -> 52XXXXXXXX
+            return '52' + clean_number[3:]
+        elif clean_number.startswith('52') and len(clean_number) == 12:
+            # Already in correct format (52XXXXXXXXXX)
+            return clean_number
+        elif clean_number.startswith('52') and len(clean_number) == 13:
+            # 521XXXXXXXXXX -> 52XXXXXXXXXX
+            return '52' + clean_number[3:]
+        elif len(clean_number) == 10:
+            # Local Mexican number -> add 52 prefix
+            return '52' + clean_number
+        else:
+            # Return as-is if format is unclear
+            return clean_number
+
     async def send_message(self, to: str, message: str) -> bool:
         """Send a text message via WhatsApp using Meta Cloud API."""
         try:
-            # Remove whatsapp: prefix if present and ensure proper format
+            # Remove whatsapp: prefix if present and normalize format
             phone_number = to.replace("whatsapp:", "").replace("+", "")
+            phone_number = self.normalize_mexican_phone_number(phone_number)
             
             url = f"{self.base_url}/{self.settings.meta_phone_number_id}/messages"
             
@@ -48,7 +72,7 @@ class WhatsAppClient:
             if response.status_code == 200:
                 result = response.json()
                 message_id = result.get("messages", [{}])[0].get("id")
-                logger.info(f"Message sent successfully to {to}: {message_id}")
+                logger.info(f"Message sent successfully to {to} (normalized: {phone_number}): {message_id}")
                 return True
             else:
                 # If it's a "not in allowed list" error, try template fallback
@@ -57,7 +81,7 @@ class WhatsAppClient:
                     logger.info(f"Number {to} not in allowed list, trying template fallback...")
                     return await self.send_template_message(to, message)
                 
-                logger.error(f"Error sending message to {to}: {response.status_code} - {response.text}")
+                logger.error(f"Error sending message to {to} (normalized: {phone_number}): {response.status_code} - {response.text}")
                 return False
 
         except Exception as e:
@@ -67,8 +91,9 @@ class WhatsAppClient:
     async def send_template_message(self, to: str, original_message: str) -> bool:
         """Send a template message as fallback when free-form messages fail."""
         try:
-            # Remove whatsapp: prefix if present and ensure proper format
+            # Remove whatsapp: prefix if present and normalize format
             phone_number = to.replace("whatsapp:", "").replace("+", "")
+            phone_number = self.normalize_mexican_phone_number(phone_number)
             
             url = f"{self.base_url}/{self.settings.meta_phone_number_id}/messages"
             
@@ -92,11 +117,11 @@ class WhatsAppClient:
             if response.status_code == 200:
                 result = response.json()
                 message_id = result.get("messages", [{}])[0].get("id")
-                logger.info(f"Template message sent successfully to {to}: {message_id}")
+                logger.info(f"Template message sent successfully to {to} (normalized: {phone_number}): {message_id}")
                 logger.info(f"Original message was: {original_message}")
                 return True
             else:
-                logger.error(f"Error sending template to {to}: {response.status_code} - {response.text}")
+                logger.error(f"Error sending template to {to} (normalized: {phone_number}): {response.status_code} - {response.text}")
                 return False
 
         except Exception as e:
@@ -108,8 +133,9 @@ class WhatsAppClient:
                                       total_sales: float, total_expenses: float) -> bool:
         """Send transaction confirmation using custom template."""
         try:
-            # Remove whatsapp: prefix if present and ensure proper format
+            # Remove whatsapp: prefix if present and normalize format
             phone_number = to.replace("whatsapp:", "").replace("+", "")
+            phone_number = self.normalize_mexican_phone_number(phone_number)
             
             url = f"{self.base_url}/{self.settings.meta_phone_number_id}/messages"
             
@@ -148,10 +174,10 @@ class WhatsAppClient:
             if response.status_code == 200:
                 result = response.json()
                 message_id = result.get("messages", [{}])[0].get("id")
-                logger.info(f"Transaction template sent successfully to {to}: {message_id}")
+                logger.info(f"Transaction template sent successfully to {to} (normalized: {phone_number}): {message_id}")
                 return True
             else:
-                logger.error(f"Error sending transaction template to {to}: {response.status_code} - {response.text}")
+                logger.error(f"Error sending transaction template to {to} (normalized: {phone_number}): {response.status_code} - {response.text}")
                 # Fallback to hello_world if custom template fails
                 return await self.send_template_message(to, f"{transaction_type_es}: ${amount}")
 
