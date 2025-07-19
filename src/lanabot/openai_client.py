@@ -4,11 +4,11 @@ import logging
 from decimal import Decimal
 from typing import Optional
 
-import httpx
 from openai import AsyncOpenAI
 
 from .config import get_settings
 from .models import ProcessedTransaction, TransactionType
+
 
 logger = logging.getLogger(__name__)
 
@@ -21,75 +21,75 @@ class OpenAIClient:
         settings = get_settings()
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-    async def transcribe_audio(self, audio_file_path: str) -> Optional[str]:
+    async def transcribe_audio(self, audio_file_path: str) -> str | None:
         """Transcribe audio file to text using Whisper."""
         try:
             # Try different approaches to handle audio format
-            
+
             # First, try sending the file as-is with different extensions
             file_attempts = [
                 (audio_file_path, "original"),
                 # Try copying with different extensions that Whisper accepts
             ]
-            
-            import tempfile
+
             import os
             import shutil
-            
+            import tempfile
+
             # Try with .ogg extension (should work with Whisper)
             ogg_path = None
             try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as temp_file:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as temp_file:
                     ogg_path = temp_file.name
-                    
+
                 # Copy the original file with .ogg extension
                 shutil.copy2(audio_file_path, ogg_path)
-                
+
                 logger.info(f"Trying transcription with .ogg extension: {ogg_path}")
-                
+
                 # Try transcribing as .ogg
                 with open(ogg_path, "rb") as audio_file:
                     transcript = await self.client.audio.transcriptions.create(
-                        model="whisper-1", 
-                        file=audio_file, 
+                        model="whisper-1",
+                        file=audio_file,
                         language="es"
                     )
 
                 transcribed_text = transcript.text
                 logger.info(f"Whisper transcription: '{transcribed_text}'")
                 return transcribed_text
-                
+
             except Exception as ogg_error:
                 logger.warning(f"OGG transcription failed: {ogg_error}")
-                
+
                 # Try with .wav extension as fallback
                 wav_path = None
                 try:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
                         wav_path = temp_file.name
-                        
+
                     shutil.copy2(audio_file_path, wav_path)
-                    
+
                     logger.info(f"Trying transcription with .wav extension: {wav_path}")
-                    
+
                     with open(wav_path, "rb") as audio_file:
                         transcript = await self.client.audio.transcriptions.create(
-                            model="whisper-1", 
-                            file=audio_file, 
+                            model="whisper-1",
+                            file=audio_file,
                             language="es"
                         )
 
                     transcribed_text = transcript.text
                     logger.info(f"Whisper transcription: '{transcribed_text}'")
                     return transcribed_text
-                    
+
                 finally:
                     if wav_path and os.path.exists(wav_path):
                         try:
                             os.unlink(wav_path)
                         except Exception:
                             pass
-                            
+
             finally:
                 if ogg_path and os.path.exists(ogg_path):
                     try:
@@ -105,12 +105,12 @@ class OpenAIClient:
         """Process ticket image to extract transaction information using GPT-4o Vision."""
         try:
             import base64
-            
+
             # Read and encode image
             with open(image_file_path, "rb") as image_file:
                 image_data = image_file.read()
-                image_base64 = base64.b64encode(image_data).decode('utf-8')
-            
+                image_base64 = base64.b64encode(image_data).decode("utf-8")
+
             # Prompt for ticket analysis
             system_prompt = """
 Eres un experto en leer tickets mexicanos para tenderos. Tu trabajo es extraer información y clasificar con alta precisión.
@@ -176,7 +176,7 @@ IMPORTANTE:
             # Clean up and extract JSON
             content = content.strip()
             import re
-            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            json_match = re.search(r"\{.*\}", content, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
             else:
@@ -186,9 +186,10 @@ IMPORTANTE:
             try:
                 data = json.loads(json_str)
                 # Return ProcessedTransaction directly
-                from .models import ProcessedTransaction, TransactionType
                 from decimal import Decimal
-                
+
+                from .models import ProcessedTransaction, TransactionType
+
                 return ProcessedTransaction(
                     transaction_type=TransactionType(data["transaction_type"]),
                     amount=Decimal(str(data["amount"])),
@@ -203,7 +204,7 @@ IMPORTANTE:
             logger.error(f"Error processing ticket image: {e}")
             return None
 
-    async def process_transaction_text(self, text: str) -> Optional[ProcessedTransaction]:
+    async def process_transaction_text(self, text: str) -> ProcessedTransaction | None:
         """Process text to extract transaction information using GPT-4o."""
         try:
             system_prompt = """
@@ -226,9 +227,18 @@ EJEMPLOS DE GASTOS:
 - "Pagué 80 pesos de luz" → GASTO, 80, "luz"
 - "Gasté 200 en el súper" → GASTO, 200, "súper"
 
+EJEMPLOS DE AJUSTES DE CAJA:
+- "Empiezo con 500 pesos" → AJUSTE_CAJA, 500, "saldo inicial"
+- "Inicial: 300" → AJUSTE_CAJA, 300, "saldo inicial" 
+- "Agregué 200 a caja" → AJUSTE_CAJA, 200, "agregado a caja"
+- "Saqué 150 para gastos" → AJUSTE_CAJA, -150, "retirado de caja"
+- "Metí 100 de mi bolsa" → AJUSTE_CAJA, 100, "agregado personal"
+- "Ajuste: +100" → AJUSTE_CAJA, 100, "ajuste positivo"
+- "Ajuste: -50" → AJUSTE_CAJA, -50, "ajuste negativo"
+
 FORMATO DE RESPUESTA (JSON EXACTO):
 {
-    "transaction_type": "venta",
+    "transaction_type": "venta" | "gasto" | "ajuste_caja",
     "amount": 30.0,
     "description": "3 refrescos",
     "confidence": 0.95
@@ -238,6 +248,7 @@ IMPORTANTE:
 - SIEMPRE incluye los 4 campos
 - NO uses markdown, SOLO JSON puro
 - Calcula el monto total (3 × 10 = 30)
+- Los ajustes de caja pueden ser negativos (retiros)
 - Si no puedes extraer información clara, responde con null
 """
 
@@ -261,13 +272,13 @@ IMPORTANTE:
 
             # Clean up the response - sometimes GPT adds markdown or extra text
             content = content.strip()
-            
+
             # Try to extract JSON from the response
             import json
             import re
-            
+
             # Look for JSON block in the response
-            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            json_match = re.search(r"\{.*\}", content, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
             else:
@@ -303,6 +314,7 @@ IMPORTANTE:
 💰 Saldo actual: ${balance_info['current_balance']:.2f} MXN
 📈 Total ventas: ${balance_info['total_sales']:.2f}
 📉 Total gastos: ${balance_info['total_expenses']:.2f}
+🔄 Total ajustes: ${balance_info.get('total_adjustments', 0):.2f}
 """
             else:
                 base_message = f"""
@@ -311,6 +323,7 @@ Aquí tienes tu saldo actual, jefe 📊
 💰 Saldo: ${balance_info['current_balance']:.2f} MXN
 📈 Ventas: ${balance_info['total_sales']:.2f}
 📉 Gastos: ${balance_info['total_expenses']:.2f}
+🔄 Ajustes: ${balance_info.get('total_adjustments', 0):.2f}
 """
 
             # Add low balance warning if needed

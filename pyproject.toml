@@ -51,7 +51,6 @@ select = [
     "TCH", # flake8-type-checking
     "TID", # flake8-tidy-imports
     "Q", # flake8-quotes
-    "FUP", # pyupgrade
     "PTH", # flake8-use-pathlib
     "ERA", # flake8-eradicate
     "PD", # pandas-vet
@@ -94,4 +93,9 @@ exclude_lines = [
     "raise AssertionError",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.4",
 ]

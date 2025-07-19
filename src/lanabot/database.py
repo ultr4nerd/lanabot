@@ -1,14 +1,14 @@
 """Database operations for LanaBot."""
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Optional
 
 from supabase import Client, create_client
 
 from .config import get_settings
 from .models import Balance, Transaction, TransactionType
+
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +28,13 @@ class DatabaseManager:
         try:
             logger.info(f"Creating transaction: {transaction}")
             logger.info(f"Transaction type: {transaction.transaction_type}, type: {type(transaction.transaction_type)}")
-            
+
             # Handle both enum and string transaction types
-            if hasattr(transaction.transaction_type, 'value'):
+            if hasattr(transaction.transaction_type, "value"):
                 transaction_type_value = transaction.transaction_type.value
             else:
                 transaction_type_value = str(transaction.transaction_type)
-            
+
             data = {
                 "phone_number": transaction.phone_number,
                 "transaction_type": transaction_type_value,
@@ -81,14 +81,14 @@ class DatabaseManager:
                 .eq("id", transaction_id)
                 .execute()
             )
-            
+
             if result.data:
                 logger.info(f"Updated transaction {transaction_id} to type {new_type.value}")
                 return True
             else:
                 logger.error(f"No transaction found with ID {transaction_id}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"Error updating transaction {transaction_id}: {e}")
             return False
@@ -97,7 +97,7 @@ class DatabaseManager:
         """Get current balance for a phone number."""
         try:
             logger.info(f"Getting balance for phone_number: '{phone_number}'")
-            
+
             # Get all transactions for this phone number
             result = (
                 self.client.table("transactions")
@@ -108,7 +108,7 @@ class DatabaseManager:
 
             transactions = result.data
             logger.info(f"Found {len(transactions)} transactions for {phone_number}")
-            
+
             if transactions:
                 logger.info(f"Sample transaction: {transactions[0]}")
             else:
@@ -118,14 +118,17 @@ class DatabaseManager:
 
             total_sales = Decimal("0")
             total_expenses = Decimal("0")
+            total_adjustments = Decimal("0")
             last_updated = None
 
             for transaction in transactions:
                 amount = Decimal(str(transaction["amount"]))
                 if transaction["transaction_type"] == TransactionType.VENTA.value:
                     total_sales += amount
-                else:
+                elif transaction["transaction_type"] == TransactionType.GASTO.value:
                     total_expenses += amount
+                elif transaction["transaction_type"] == TransactionType.AJUSTE_CAJA.value:
+                    total_adjustments += amount
 
                 # Update last_updated with the most recent transaction
                 transaction_date = datetime.fromisoformat(transaction["created_at"])
@@ -134,16 +137,16 @@ class DatabaseManager:
 
             # If no transactions, use current time
             if last_updated is None:
-                from datetime import timezone
-                last_updated = datetime.now(timezone.utc)
+                last_updated = datetime.now(UTC)
 
-            current_balance = total_sales - total_expenses
+            current_balance = total_sales - total_expenses + total_adjustments
 
             return Balance(
                 phone_number=phone_number,
                 current_balance=current_balance,
                 total_sales=total_sales,
                 total_expenses=total_expenses,
+                total_adjustments=total_adjustments,
                 last_updated=last_updated,
             )
 
@@ -155,6 +158,7 @@ class DatabaseManager:
                 current_balance=Decimal("0"),
                 total_sales=Decimal("0"),
                 total_expenses=Decimal("0"),
+                total_adjustments=Decimal("0"),
                 last_updated=datetime.utcnow(),
             )
 

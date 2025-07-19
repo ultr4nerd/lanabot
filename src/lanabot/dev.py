@@ -8,7 +8,7 @@ from .config import get_settings
 def main() -> None:
     """Run the development server with auto-reload."""
     settings = get_settings()
-    
+
     uvicorn.run(
         "lanabot.main:app",
         host="0.0.0.0",
