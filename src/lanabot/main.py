@@ -179,7 +179,7 @@ async def process_transaction_with_confirmation(phone_number: str, processed_tra
         await app.state.whatsapp_client.send_message(phone_number, response_message)
         
         # Store transaction ID for potential correction
-        pending_manager.add_pending(phone_number, processed_transaction)
+        pending_manager.add_pending(phone_number, processed_transaction, saved_transaction.id)
         
         # Check for low balance alert
         if await app.state.db.check_low_balance_alert(phone_number):
@@ -219,16 +219,29 @@ async def handle_transaction_correction(phone_number: str, correction_type: str)
         from .models import TransactionType
         new_type = TransactionType(correction_type)
         
-        # Create corrected transaction
-        transaction = Transaction(
-            phone_number=phone_number,
-            transaction_type=new_type,
-            amount=pending.amount,
-            description=pending.description,
-        )
-        
-        saved_transaction = await app.state.db.create_transaction(transaction)
-        logger.info(f"Corrected transaction created: {saved_transaction}")
+        # If we have a transaction ID, update the existing transaction
+        if pending.transaction_id:
+            success = await app.state.db.update_transaction_type(pending.transaction_id, new_type)
+            
+            if not success:
+                await app.state.whatsapp_client.send_message(
+                    phone_number,
+                    "Error al corregir la transacción. Intenta de nuevo 😕"
+                )
+                return
+                
+            logger.info(f"Updated transaction {pending.transaction_id} to {new_type.value}")
+        else:
+            # Fallback: create new transaction (shouldn't happen with new flow)
+            transaction = Transaction(
+                phone_number=phone_number,
+                transaction_type=new_type,
+                amount=pending.amount,
+                description=pending.description,
+            )
+            
+            saved_transaction = await app.state.db.create_transaction(transaction)
+            logger.info(f"Created corrected transaction: {saved_transaction}")
         
         # Get updated balance
         balance = await app.state.db.get_balance(phone_number)

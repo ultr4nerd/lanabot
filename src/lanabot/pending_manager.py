@@ -16,7 +16,7 @@ class PendingTransactionManager:
         """Initialize the pending transaction manager."""
         self._pending: Dict[str, PendingTransaction] = {}
     
-    def add_pending(self, phone_number: str, processed_transaction: ProcessedTransaction) -> None:
+    def add_pending(self, phone_number: str, processed_transaction: ProcessedTransaction, transaction_id: int = None) -> None:
         """Add a pending transaction for confirmation."""
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=2)  # 2 minute timeout
         
@@ -26,7 +26,8 @@ class PendingTransactionManager:
             amount=processed_transaction.amount,
             description=processed_transaction.description,
             suggested_at=datetime.now(timezone.utc),
-            expires_at=expires_at
+            expires_at=expires_at,
+            transaction_id=transaction_id
         )
         
         self._pending[phone_number] = pending

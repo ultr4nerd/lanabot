@@ -72,6 +72,27 @@ class DatabaseManager:
             logger.error(f"Error creating transaction: {e}")
             raise
 
+    async def update_transaction_type(self, transaction_id: int, new_type: TransactionType) -> bool:
+        """Update the transaction type of an existing transaction."""
+        try:
+            result = (
+                self.client.table("transactions")
+                .update({"transaction_type": new_type.value})
+                .eq("id", transaction_id)
+                .execute()
+            )
+            
+            if result.data:
+                logger.info(f"Updated transaction {transaction_id} to type {new_type.value}")
+                return True
+            else:
+                logger.error(f"No transaction found with ID {transaction_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error updating transaction {transaction_id}: {e}")
+            return False
+
     async def get_balance(self, phone_number: str) -> Balance:
         """Get current balance for a phone number."""
         try:

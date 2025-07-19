@@ -62,6 +62,7 @@ class PendingTransaction(BaseModel):
     description: str = Field(..., description="Transaction description")
     suggested_at: datetime = Field(..., description="When suggestion was made")
     expires_at: datetime = Field(..., description="When suggestion expires")
+    transaction_id: Optional[int] = Field(None, description="ID of created transaction (if any)")
 
 
 class Balance(BaseModel):
