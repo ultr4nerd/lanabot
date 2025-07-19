@@ -326,6 +326,17 @@ Aquí tienes tu saldo actual, jefe 📊
 🔄 Ajustes: ${balance_info.get('total_adjustments', 0):.2f}
 """
 
+            # Add cash flow estimation
+            days_remaining = balance_info.get('days_remaining')
+            if days_remaining is not None:
+                if days_remaining >= 1:
+                    base_message += f"\n📅 Tu efectivo te rinde ~{days_remaining:.1f} días"
+                elif days_remaining > 0:
+                    hours = days_remaining * 24
+                    base_message += f"\n⏰ Tu efectivo te rinde ~{hours:.1f} horas"
+                else:
+                    base_message += f"\n🚨 ¡Sin fondos para gastos!"
+
             # Add low balance warning if needed
             settings = get_settings()
             if balance_info["current_balance"] < settings.minimum_balance_alert:

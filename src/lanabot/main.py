@@ -184,8 +184,14 @@ async def process_transaction_with_confirmation(phone_number: str, processed_tra
         saved_transaction = await app.state.db.create_transaction(transaction)
         logger.info(f"Transaction created with confirmation: {saved_transaction}")
 
-        # Get updated balance
+        # Get updated balance and cash flow estimation
         balance = await app.state.db.get_balance(phone_number)
+        daily_expenses = await app.state.db.get_daily_expense_average(phone_number)
+        
+        # Calculate cash flow duration
+        days_remaining = None
+        if balance.current_balance > 0 and daily_expenses > 0:
+            days_remaining = float(balance.current_balance / daily_expenses)
 
         # Generate response with correction option
         if processed_transaction.transaction_type.value == "venta":
@@ -203,9 +209,19 @@ async def process_transaction_with_confirmation(phone_number: str, processed_tra
 💰 Saldo actual: ${balance.current_balance:.2f} MXN
 📈 Total ventas: ${balance.total_sales:.2f}
 📉 Total gastos: ${balance.total_expenses:.2f}
-🔄 Total ajustes: ${balance.total_adjustments:.2f}
+🔄 Total ajustes: ${balance.total_adjustments:.2f}"""
 
-❌ ¿Está mal? Responde {opposite_type} para corregir"""
+        # Add cash flow estimation
+        if days_remaining is not None:
+            if days_remaining >= 1:
+                response_message += f"\n📅 Tu efectivo te rinde ~{days_remaining:.1f} días"
+            elif days_remaining > 0:
+                hours = days_remaining * 24
+                response_message += f"\n⏰ Tu efectivo te rinde ~{hours:.1f} horas"
+            else:
+                response_message += f"\n🚨 ¡Sin fondos para gastos!"
+
+        response_message += f"\n\n❌ ¿Está mal? Responde {opposite_type} para corregir"
 
         # Send regular message directly (skip template for now)
         logger.info(f"Sending confirmation message to {phone_number}")
@@ -469,12 +485,19 @@ async def handle_balance_inquiry(phone_number: str) -> None:
     """Handle balance inquiry request."""
     try:
         balance = await app.state.db.get_balance(phone_number)
+        daily_expenses = await app.state.db.get_daily_expense_average(phone_number)
+        
+        # Calculate cash flow duration
+        days_remaining = None
+        if balance.current_balance > 0 and daily_expenses > 0:
+            days_remaining = float(balance.current_balance / daily_expenses)
 
         balance_info = {
             "current_balance": balance.current_balance,
             "total_sales": balance.total_sales,
             "total_expenses": balance.total_expenses,
             "total_adjustments": balance.total_adjustments,
+            "days_remaining": days_remaining,
         }
 
         response_message = await app.state.openai_client.generate_response_message(

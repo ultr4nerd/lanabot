@@ -205,6 +205,45 @@ class DatabaseManager:
             logger.error(f"Error getting recent transactions for {phone_number}: {e}")
             return []
 
+    async def get_daily_expense_average(self, phone_number: str) -> Decimal:
+        """Calculate daily average expenses for cash flow estimation."""
+        try:
+            # Get transactions from last 30 days
+            from datetime import timedelta
+            thirty_days_ago = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+            
+            result = (
+                self.client.table("transactions")
+                .select("*")
+                .eq("phone_number", phone_number)
+                .gte("created_at", thirty_days_ago)
+                .execute()
+            )
+
+            total_expenses = Decimal("0")
+            expense_days = set()
+            
+            for transaction in result.data:
+                transaction_date = datetime.fromisoformat(transaction["created_at"]).date()
+                description = transaction.get("description", "").lower()
+                
+                if transaction["transaction_type"] == TransactionType.GASTO.value:
+                    # Check if it's a real expense (not cash adjustment)
+                    if not any(keyword in description for keyword in ["retirado", "ajuste negativo"]):
+                        total_expenses += Decimal(str(transaction["amount"]))
+                        expense_days.add(transaction_date)
+            
+            # If we have expenses, calculate daily average
+            if expense_days and total_expenses > 0:
+                return total_expenses / len(expense_days)
+            
+            # Fallback: assume $100 daily expenses if no data
+            return Decimal("100")
+            
+        except Exception as e:
+            logger.error(f"Error calculating daily expenses for {phone_number}: {e}")
+            return Decimal("100")  # Safe fallback
+
     async def check_low_balance_alert(self, phone_number: str) -> bool:
         """Check if balance is below alert threshold."""
         try:
