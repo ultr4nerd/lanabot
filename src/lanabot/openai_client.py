@@ -64,15 +64,19 @@ EJEMPLOS DE GASTOS:
 - "Pagué 80 pesos de luz" → GASTO, 80, "luz"
 - "Gasté 200 en el súper" → GASTO, 200, "súper"
 
-FORMATO DE RESPUESTA (JSON):
+FORMATO DE RESPUESTA (JSON EXACTO):
 {
-    "transaction_type": "venta" o "gasto",
-    "amount": número decimal,
-    "description": "descripción breve",
-    "confidence": número entre 0.0 y 1.0
+    "transaction_type": "venta",
+    "amount": 30.0,
+    "description": "3 refrescos",
+    "confidence": 0.95
 }
 
-Si no puedes extraer información clara, responde con null.
+IMPORTANTE: 
+- SIEMPRE incluye los 4 campos
+- NO uses markdown, SOLO JSON puro
+- Calcula el monto total (3 × 10 = 30)
+- Si no puedes extraer información clara, responde con null
 """
 
             user_prompt = f"Procesa este mensaje: '{text}'"

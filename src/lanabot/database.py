@@ -26,9 +26,18 @@ class DatabaseManager:
     async def create_transaction(self, transaction: Transaction) -> Transaction:
         """Create a new transaction in the database."""
         try:
+            logger.info(f"Creating transaction: {transaction}")
+            logger.info(f"Transaction type: {transaction.transaction_type}, type: {type(transaction.transaction_type)}")
+            
+            # Handle both enum and string transaction types
+            if hasattr(transaction.transaction_type, 'value'):
+                transaction_type_value = transaction.transaction_type.value
+            else:
+                transaction_type_value = str(transaction.transaction_type)
+            
             data = {
                 "phone_number": transaction.phone_number,
-                "transaction_type": transaction.transaction_type.value,
+                "transaction_type": transaction_type_value,
                 "amount": float(transaction.amount),
                 "description": transaction.description,
                 "created_at": datetime.utcnow().isoformat(),
