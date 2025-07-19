@@ -33,7 +33,9 @@ class OpenAIClient:
                     language="es"
                 )
 
-            return transcript.text
+            transcribed_text = transcript.text
+            logger.info(f"Whisper transcription: '{transcribed_text}'")
+            return transcribed_text
 
         except Exception as e:
             logger.error(f"Error transcribing audio: {e}")
@@ -86,15 +88,27 @@ Si no puedes extraer información clara, responde con null.
             )
 
             content = response.choices[0].message.content
+            logger.info(f"GPT-4o response: {content}")  # Debug: see what GPT returns
 
             if not content or content.strip().lower() == "null":
                 return None
 
-            # Parse JSON response
+            # Clean up the response - sometimes GPT adds markdown or extra text
+            content = content.strip()
+            
+            # Try to extract JSON from the response
             import json
+            import re
+            
+            # Look for JSON block in the response
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+            else:
+                json_str = content
 
             try:
-                data = json.loads(content)
+                data = json.loads(json_str)
                 return ProcessedTransaction(
                     transaction_type=TransactionType(data["transaction_type"]),
                     amount=Decimal(str(data["amount"])),
@@ -103,6 +117,8 @@ Si no puedes extraer información clara, responde con null.
                 )
             except (json.JSONDecodeError, KeyError, ValueError) as e:
                 logger.error(f"Error parsing GPT response: {e}")
+                logger.error(f"Raw response: '{content}'")
+                logger.error(f"Extracted JSON: '{json_str}'")
                 return None
 
         except Exception as e:
