@@ -12,7 +12,7 @@ class TransactionType(str, Enum):
 
     VENTA = "venta"
     GASTO = "gasto"
-    AJUSTE_CAJA = "ajuste_caja"
+    AJUSTE_CAJA = "ajuste"
 
 
 class Transaction(BaseModel):

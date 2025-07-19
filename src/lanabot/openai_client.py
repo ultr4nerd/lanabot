@@ -228,17 +228,17 @@ EJEMPLOS DE GASTOS:
 - "Gasté 200 en el súper" → GASTO, 200, "súper"
 
 EJEMPLOS DE AJUSTES DE CAJA:
-- "Empiezo con 500 pesos" → AJUSTE_CAJA, 500, "saldo inicial"
-- "Inicial: 300" → AJUSTE_CAJA, 300, "saldo inicial" 
-- "Agregué 200 a caja" → AJUSTE_CAJA, 200, "agregado a caja"
-- "Saqué 150 para gastos" → AJUSTE_CAJA, -150, "retirado de caja"
-- "Metí 100 de mi bolsa" → AJUSTE_CAJA, 100, "agregado personal"
-- "Ajuste: +100" → AJUSTE_CAJA, 100, "ajuste positivo"
-- "Ajuste: -50" → AJUSTE_CAJA, -50, "ajuste negativo"
+- "Empiezo con 500 pesos" → ajuste, 500, "saldo inicial"
+- "Inicial: 300" → ajuste, 300, "saldo inicial" 
+- "Agregué 200 a caja" → ajuste, 200, "agregado a caja"
+- "Saqué 150 para gastos" → ajuste, -150, "retirado de caja"
+- "Metí 100 de mi bolsa" → ajuste, 100, "agregado personal"
+- "Ajuste: +100" → ajuste, 100, "ajuste positivo"
+- "Ajuste: -50" → ajuste, -50, "ajuste negativo"
 
 FORMATO DE RESPUESTA (JSON EXACTO):
 {
-    "transaction_type": "venta" | "gasto" | "ajuste_caja",
+    "transaction_type": "venta" | "gasto" | "ajuste",
     "amount": 30.0,
     "description": "3 refrescos",
     "confidence": 0.95
