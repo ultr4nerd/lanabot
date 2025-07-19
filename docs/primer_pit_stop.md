@@ -81,12 +81,12 @@ Que cualquier tendero pueda registrar ventas y gastos con un simple audio o foto
 ### ¿Cómo funciona sin entrar en tecnicismos?
 
 1. **Escucha**: LanaBot recibe tu audio, texto o foto en WhatsApp.  
-2. **Entiende**: Whisper transcribe audio en español mexicano; GPT-4o Vision lee tickets; GPT-4o procesa texto y extrae información financiera.  
-3. **Clasifica**: Distingue automáticamente entre ventas, gastos, ajustes de caja, consultas de saldo y búsquedas.  
-4. **Actualiza**: Suma o resta el monto en la nube con cálculos de flujo de efectivo en tiempo real.  
-5. **Responde**: Devuelve saldo actualizado, estimación de días que rinde el efectivo, y tip financiero contextual.  
-6. **Busca**: Permite consultas naturales como "¿cuánto gasté en dulces?" con historial detallado.  
-7. **Aprende**: Analiza patrones de gasto para generar consejos personalizados automáticamente.
+2. **Entiende**: Convierte tu voz a texto, lee números en fotos de tickets y comprende lo que quieres hacer.  
+3. **Clasifica**: Sabe si es una venta, un gasto, una pregunta o si solo quieres saludar.  
+4. **Actualiza**: Suma o resta el dinero y calcula cuánto te va a durar.  
+5. **Responde**: Te dice tu saldo actual, cuántos días te rinde el efectivo y te da un consejo útil.  
+6. **Busca**: Si preguntas "¿cuánto gasté en dulces?" te muestra el historial completo.  
+7. **Aprende**: Con el tiempo te conoce mejor y te da consejos más personalizados.
 
 ---
 
@@ -94,10 +94,10 @@ Que cualquier tendero pueda registrar ventas y gastos con un simple audio o foto
 
 - **WhatsApp Business Cloud API**: canal principal para recibir audios, fotos y enviar respuestas; integración directa con Meta para máxima confiabilidad y escalabilidad.
 - **FastAPI con Python 3.12+**: orquestador principal que maneja la secuencia audio → texto → clasificación → respuesta con async/await para máximo rendimiento.
-- **Whisper + GPT-4o Vision**: Whisper transcribe audio en español mexicano; GPT-4o Vision lee tickets y entiende contexto visual.
-- **GPT-4o (LLM)**: procesa texto transcrito, extrae montos y tipos de transacción, genera tips financieros contextuales y redacta respuestas en lenguaje mexicano coloquial.
-- **Postgres en Supabase**: base de datos en tiempo real con búsquedas optimizadas, plan gratuito suficiente para piloto y escalabilidad automática.
-- **Railway**: hosting con deploy automático desde Git, variables de entorno, logs y webhooks sin configuración compleja.
+- **OpenAI Whisper + GPT-4o Vision**: Whisper transcribe audio en español mexicano; GPT-4o Vision lee tickets y entiende contexto visual; GPT-4o procesa texto y extrae información financiera.
+- **PostgreSQL en Supabase**: base de datos en tiempo real con búsquedas optimizadas (ILIKE), índices automáticos y escalabilidad horizontal.
+- **Railway**: hosting con deploy automático desde Git, variables de entorno seguras, logs centralizados y webhooks sin configuración compleja.
+- **uv (Ultra-fast Python package manager)**: gestión de dependencias 10-100x más rápida que pip, con lock files determinísticos.
 
 ---
 
@@ -106,12 +106,14 @@ Que cualquier tendero pueda registrar ventas y gastos con un simple audio o foto
 Todas ofrecen planes gratuitos y se despliegan sin administrar servidores.  
 Para el MVP del hackathon, priorizamos rapidez de implementación y confiabilidad:
 
-- **WhatsApp Business API** ofrece integración oficial de Meta con mejor deliverabilidad que Twilio.
-- **Railway** elimina túneles locales con webhooks públicos automáticos.
-- **GPT-4o** centraliza el procesamiento inteligente con capacidades multimodales.
-- **Python 3.12+** con type hints y async/await para código mantenible y performante.
+- **WhatsApp Business Cloud API** ofrece integración oficial de Meta con mejor deliverabilidad y límites más altos que Twilio.
+- **Railway** elimina túneles locales (ngrok) con webhooks públicos automáticos y deploy continuo.
+- **OpenAI GPT-4o** centraliza el procesamiento inteligente con capacidades multimodales (texto + visión + audio).
+- **Python 3.12+** con type hints completos, async/await nativo y Pydantic v2 para validación de datos ultra-rápida.
+- **Supabase** ofrece PostgreSQL real-time con APIs auto-generadas y Row Level Security nativo.
+- **uv** permite builds reproducibles y setup de desarrollo en segundos vs minutos.
 
-> En fase 2 se introducirán **LangGraph** para flujos conversacionales más sofisticados y **Supabase Edge Functions** para análisis pesados.
+> En fase 2 se introducirán **LangGraph** para flujos conversacionales más sofisticados, **Supabase Edge Functions** para análisis pesados y **LangSmith** para observabilidad de LLM.
 
 ---
 
