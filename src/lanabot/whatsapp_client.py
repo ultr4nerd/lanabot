@@ -59,8 +59,8 @@ class WhatsAppClient:
                 "Authorization": f"Basic {auth_base64}"
             }
             
-            # Download the media file with authentication
-            async with httpx.AsyncClient() as client:
+            # Download the media file with authentication and follow redirects
+            async with httpx.AsyncClient(follow_redirects=True) as client:
                 response = await client.get(media_url, headers=headers)
                 response.raise_for_status()
                 
