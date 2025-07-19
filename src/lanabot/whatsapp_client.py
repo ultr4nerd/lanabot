@@ -51,11 +51,56 @@ class WhatsAppClient:
                 logger.info(f"Message sent successfully to {to}: {message_id}")
                 return True
             else:
+                # If it's a "not in allowed list" error, try template fallback
+                error_text = response.text
+                if "131030" in error_text or "not in allowed list" in error_text.lower():
+                    logger.info(f"Number {to} not in allowed list, trying template fallback...")
+                    return await self.send_template_message(to, message)
+                
                 logger.error(f"Error sending message to {to}: {response.status_code} - {response.text}")
                 return False
 
         except Exception as e:
             logger.error(f"Error sending message to {to}: {e}")
+            return False
+
+    async def send_template_message(self, to: str, original_message: str) -> bool:
+        """Send a template message as fallback when free-form messages fail."""
+        try:
+            # Remove whatsapp: prefix if present and ensure proper format
+            phone_number = to.replace("whatsapp:", "").replace("+", "")
+            
+            url = f"{self.base_url}/{self.settings.meta_phone_number_id}/messages"
+            
+            # Use hello_world template as fallback
+            # Note: In production, you'd want to create custom templates
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "template",
+                "template": {
+                    "name": "hello_world",
+                    "language": {
+                        "code": "en_US"
+                    }
+                }
+            }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=self.headers, json=payload)
+                
+            if response.status_code == 200:
+                result = response.json()
+                message_id = result.get("messages", [{}])[0].get("id")
+                logger.info(f"Template message sent successfully to {to}: {message_id}")
+                logger.info(f"Original message was: {original_message}")
+                return True
+            else:
+                logger.error(f"Error sending template to {to}: {response.status_code} - {response.text}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error sending template to {to}: {e}")
             return False
 
     def verify_webhook_signature(self, body: bytes, signature: str) -> bool:
