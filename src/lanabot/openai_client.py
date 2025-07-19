@@ -228,17 +228,17 @@ EJEMPLOS DE GASTOS:
 - "Gasté 200 en el súper" → GASTO, 200, "súper"
 
 EJEMPLOS DE AJUSTES DE CAJA:
-- "Empiezo con 500 pesos" → ajuste, 500, "saldo inicial"
-- "Inicial: 300" → ajuste, 300, "saldo inicial" 
-- "Agregué 200 a caja" → ajuste, 200, "agregado a caja"
-- "Saqué 150 para gastos" → ajuste, -150, "retirado de caja"
-- "Metí 100 de mi bolsa" → ajuste, 100, "agregado personal"
-- "Ajuste: +100" → ajuste, 100, "ajuste positivo"
-- "Ajuste: -50" → ajuste, -50, "ajuste negativo"
+- "Empiezo con 500 pesos" → venta, 500, "saldo inicial"
+- "Inicial: 300" → venta, 300, "saldo inicial" 
+- "Agregué 200 a caja" → venta, 200, "agregado a caja"
+- "Saqué 150 para gastos" → gasto, 150, "retirado de caja"
+- "Metí 100 de mi bolsa" → venta, 100, "agregado personal"
+- "Ajuste: +100" → venta, 100, "ajuste positivo"
+- "Ajuste: -50" → gasto, 50, "ajuste negativo"
 
 FORMATO DE RESPUESTA (JSON EXACTO):
 {
-    "transaction_type": "venta" | "gasto" | "ajuste",
+    "transaction_type": "venta" | "gasto",
     "amount": 30.0,
     "description": "3 refrescos",
     "confidence": 0.95
@@ -248,7 +248,7 @@ IMPORTANTE:
 - SIEMPRE incluye los 4 campos
 - NO uses markdown, SOLO JSON puro
 - Calcula el monto total (3 × 10 = 30)
-- Los ajustes de caja pueden ser negativos (retiros)
+- Para ajustes: positivos = "venta", negativos = "gasto" (sin signo negativo en amount)
 - Si no puedes extraer información clara, responde con null
 """
 

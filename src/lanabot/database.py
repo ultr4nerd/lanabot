@@ -123,12 +123,20 @@ class DatabaseManager:
 
             for transaction in transactions:
                 amount = Decimal(str(transaction["amount"]))
+                description = transaction.get("description", "").lower()
+                
                 if transaction["transaction_type"] == TransactionType.VENTA.value:
-                    total_sales += amount
+                    # Check if it's a cash adjustment (saldo inicial, agregado, etc.)
+                    if any(keyword in description for keyword in ["saldo inicial", "agregado", "ajuste positivo", "agregado personal"]):
+                        total_adjustments += amount
+                    else:
+                        total_sales += amount
                 elif transaction["transaction_type"] == TransactionType.GASTO.value:
-                    total_expenses += amount
-                elif transaction["transaction_type"] == TransactionType.AJUSTE_CAJA.value:
-                    total_adjustments += amount
+                    # Check if it's a cash adjustment (retirado, ajuste negativo)
+                    if any(keyword in description for keyword in ["retirado", "ajuste negativo"]):
+                        total_adjustments -= amount  # Subtract because it's a withdrawal
+                    else:
+                        total_expenses += amount
 
                 # Update last_updated with the most recent transaction
                 transaction_date = datetime.fromisoformat(transaction["created_at"])
