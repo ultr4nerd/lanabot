@@ -199,8 +199,26 @@ async def process_transaction_with_confirmation(phone_number: str, processed_tra
 
 ❌ ¿Está mal? Responde {opposite_type} para corregir"""
 
-        # Send response
-        await app.state.whatsapp_client.send_message(phone_number, response_message)
+        # Try to send using custom transaction template first
+        try:
+            success = await app.state.whatsapp_client.send_transaction_template(
+                phone_number,
+                processed_transaction.transaction_type.value,
+                float(processed_transaction.amount),
+                processed_transaction.description,
+                float(balance.current_balance),
+                float(balance.total_sales),
+                float(balance.total_expenses)
+            )
+            
+            if not success:
+                # Fallback to regular message if template fails
+                await app.state.whatsapp_client.send_message(phone_number, response_message)
+                
+        except Exception as e:
+            logger.error(f"Error with template, using fallback: {e}")
+            # Fallback to regular message
+            await app.state.whatsapp_client.send_message(phone_number, response_message)
         
         # Store transaction ID for potential correction
         pending_manager.add_pending(phone_number, processed_transaction, saved_transaction.id)
@@ -279,7 +297,24 @@ async def handle_transaction_correction(phone_number: str, correction_type: str)
 📈 Total ventas: ${balance.total_sales:.2f}
 📉 Total gastos: ${balance.total_expenses:.2f}"""
 
-        await app.state.whatsapp_client.send_message(phone_number, response_message)
+        # Try to send using template, fallback to regular message
+        try:
+            success = await app.state.whatsapp_client.send_transaction_template(
+                phone_number,
+                correction_type,
+                float(pending.amount),
+                pending.description,
+                float(balance.current_balance),
+                float(balance.total_sales),
+                float(balance.total_expenses)
+            )
+            
+            if not success:
+                await app.state.whatsapp_client.send_message(phone_number, response_message)
+                
+        except Exception as e:
+            logger.error(f"Error with correction template, using fallback: {e}")
+            await app.state.whatsapp_client.send_message(phone_number, response_message)
         
         # Check for low balance alert
         if await app.state.db.check_low_balance_alert(phone_number):

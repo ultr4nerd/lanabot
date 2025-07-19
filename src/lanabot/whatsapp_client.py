@@ -103,6 +103,62 @@ class WhatsAppClient:
             logger.error(f"Error sending template to {to}: {e}")
             return False
 
+    async def send_transaction_template(self, to: str, transaction_type: str, amount: float, 
+                                      description: str, current_balance: float, 
+                                      total_sales: float, total_expenses: float) -> bool:
+        """Send transaction confirmation using custom template."""
+        try:
+            # Remove whatsapp: prefix if present and ensure proper format
+            phone_number = to.replace("whatsapp:", "").replace("+", "")
+            
+            url = f"{self.base_url}/{self.settings.meta_phone_number_id}/messages"
+            
+            # Map transaction type to Spanish
+            transaction_type_es = "VENTA" if transaction_type == "venta" else "GASTO"
+            
+            # Use custom transaction_confirmation template
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "template",
+                "template": {
+                    "name": "transaction_confirmation",
+                    "language": {
+                        "code": "es_MX"
+                    },
+                    "components": [
+                        {
+                            "type": "body",
+                            "parameters": [
+                                {"type": "text", "text": transaction_type_es},
+                                {"type": "text", "text": str(amount)},
+                                {"type": "text", "text": description},
+                                {"type": "text", "text": f"{current_balance:.2f}"},
+                                {"type": "text", "text": f"{total_sales:.2f}"},
+                                {"type": "text", "text": f"{total_expenses:.2f}"}
+                            ]
+                        }
+                    ]
+                }
+            }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=self.headers, json=payload)
+                
+            if response.status_code == 200:
+                result = response.json()
+                message_id = result.get("messages", [{}])[0].get("id")
+                logger.info(f"Transaction template sent successfully to {to}: {message_id}")
+                return True
+            else:
+                logger.error(f"Error sending transaction template to {to}: {response.status_code} - {response.text}")
+                # Fallback to hello_world if custom template fails
+                return await self.send_template_message(to, f"{transaction_type_es}: ${amount}")
+
+        except Exception as e:
+            logger.error(f"Error sending transaction template to {to}: {e}")
+            return False
+
     def verify_webhook_signature(self, body: bytes, signature: str) -> bool:
         """Verify Meta webhook signature."""
         try:
