@@ -133,14 +133,37 @@ Nuestra landing page presenta:
 ### Video Demostración del Chat
 **🎥 Presentación completa del funcionamiento**:
 
-*[Espacio reservado para video de demostración en vivo del chat de WhatsApp mostrando:]*
-- *Flujo completo de onboarding con "hola"*
-- *Registro de ventas por audio: "Vendí 3 refrescos a 15 pesos"*
-- *Procesamiento de ticket por foto*
-- *Búsqueda natural: "¿cuánto gasté en dulces?"*
-- *Consulta de saldo con estimación de días*
-- *Tips financieros contextuales automáticos*
-- *Corrección de transacciones en tiempo real*
+**Flujo recomendado para video demo (usar número 5215512345678 con datos precargados):**
+
+1. **Onboarding inicial**:
+   - Enviar: "hola"
+   - Mostrar respuesta completa del tutorial
+
+2. **Registro de transacciones**:
+   - Audio: "Vendí 2 coca colas a 15 pesos cada una"
+   - Texto: "Compré dulces por 50 pesos"
+   - Mostrar respuestas con saldo actualizado y tips automáticos
+
+3. **Procesamiento de tickets**:
+   - Subir foto de ticket del OXXO
+   - Mostrar detección automática y confirmación
+
+4. **Búsqueda natural (funcionalidad avanzada)**:
+   - "¿cuánto gasté en mercancía?" → $800.50 en 2 transacciones
+   - "¿cuánto vendí de refrescos?" → $45.00 en 1 transacción
+   - "mis gastos de dulces" → $80.00 en 1 transacción
+
+5. **Consulta de saldo**:
+   - "saldo" o "¿cuánto tengo?"
+   - Mostrar estimación de días restantes y tip contextual
+
+6. **Corrección de transacciones**:
+   - Registrar algo mal clasificado
+   - Responder "GASTO" o "VENTA" para corregir
+
+7. **Ajustes de caja**:
+   - "Saqué 200 pesos para gastos personales"
+   - "Agregué 300 pesos de mi bolsa"
 
 ### Arquitectura del Flujo de Conversación
 
