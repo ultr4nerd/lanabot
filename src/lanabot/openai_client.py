@@ -24,18 +24,43 @@ class OpenAIClient:
     async def transcribe_audio(self, audio_file_path: str) -> Optional[str]:
         """Transcribe audio file to text using Whisper."""
         try:
-            # Open the audio file directly from the local path
-            with open(audio_file_path, "rb") as audio_file:
-                # Transcribe using Whisper
-                transcript = await self.client.audio.transcriptions.create(
-                    model="whisper-1", 
-                    file=audio_file, 
-                    language="es"
-                )
+            import tempfile
+            import os
+            
+            # Convert audio to a format Whisper accepts (mp3)
+            converted_path = None
+            try:
+                from pydub import AudioSegment
+                
+                # Load audio file (pydub can handle many formats)
+                audio = AudioSegment.from_file(audio_file_path)
+                
+                # Convert to mp3 format
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
+                    converted_path = temp_file.name
+                    audio.export(converted_path, format="mp3")
+                
+                logger.info(f"Converted audio from {audio_file_path} to {converted_path}")
+                
+                # Transcribe the converted file
+                with open(converted_path, "rb") as audio_file:
+                    transcript = await self.client.audio.transcriptions.create(
+                        model="whisper-1", 
+                        file=audio_file, 
+                        language="es"
+                    )
 
-            transcribed_text = transcript.text
-            logger.info(f"Whisper transcription: '{transcribed_text}'")
-            return transcribed_text
+                transcribed_text = transcript.text
+                logger.info(f"Whisper transcription: '{transcribed_text}'")
+                return transcribed_text
+                
+            finally:
+                # Clean up converted file
+                if converted_path and os.path.exists(converted_path):
+                    try:
+                        os.unlink(converted_path)
+                    except Exception:
+                        pass
 
         except Exception as e:
             logger.error(f"Error transcribing audio: {e}")
