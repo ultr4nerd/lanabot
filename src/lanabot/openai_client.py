@@ -24,26 +24,31 @@ class OpenAIClient:
     async def transcribe_audio(self, audio_file_path: str) -> Optional[str]:
         """Transcribe audio file to text using Whisper."""
         try:
+            # Try different approaches to handle audio format
+            
+            # First, try sending the file as-is with different extensions
+            file_attempts = [
+                (audio_file_path, "original"),
+                # Try copying with different extensions that Whisper accepts
+            ]
+            
             import tempfile
             import os
+            import shutil
             
-            # Convert audio to a format Whisper accepts (mp3)
-            converted_path = None
+            # Try with .ogg extension (should work with Whisper)
+            ogg_path = None
             try:
-                from pydub import AudioSegment
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as temp_file:
+                    ogg_path = temp_file.name
+                    
+                # Copy the original file with .ogg extension
+                shutil.copy2(audio_file_path, ogg_path)
                 
-                # Load audio file (pydub can handle many formats)
-                audio = AudioSegment.from_file(audio_file_path)
+                logger.info(f"Trying transcription with .ogg extension: {ogg_path}")
                 
-                # Convert to mp3 format
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
-                    converted_path = temp_file.name
-                    audio.export(converted_path, format="mp3")
-                
-                logger.info(f"Converted audio from {audio_file_path} to {converted_path}")
-                
-                # Transcribe the converted file
-                with open(converted_path, "rb") as audio_file:
+                # Try transcribing as .ogg
+                with open(ogg_path, "rb") as audio_file:
                     transcript = await self.client.audio.transcriptions.create(
                         model="whisper-1", 
                         file=audio_file, 
@@ -54,11 +59,41 @@ class OpenAIClient:
                 logger.info(f"Whisper transcription: '{transcribed_text}'")
                 return transcribed_text
                 
+            except Exception as ogg_error:
+                logger.warning(f"OGG transcription failed: {ogg_error}")
+                
+                # Try with .wav extension as fallback
+                wav_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+                        wav_path = temp_file.name
+                        
+                    shutil.copy2(audio_file_path, wav_path)
+                    
+                    logger.info(f"Trying transcription with .wav extension: {wav_path}")
+                    
+                    with open(wav_path, "rb") as audio_file:
+                        transcript = await self.client.audio.transcriptions.create(
+                            model="whisper-1", 
+                            file=audio_file, 
+                            language="es"
+                        )
+
+                    transcribed_text = transcript.text
+                    logger.info(f"Whisper transcription: '{transcribed_text}'")
+                    return transcribed_text
+                    
+                finally:
+                    if wav_path and os.path.exists(wav_path):
+                        try:
+                            os.unlink(wav_path)
+                        except Exception:
+                            pass
+                            
             finally:
-                # Clean up converted file
-                if converted_path and os.path.exists(converted_path):
+                if ogg_path and os.path.exists(ogg_path):
                     try:
-                        os.unlink(converted_path)
+                        os.unlink(ogg_path)
                     except Exception:
                         pass
 
