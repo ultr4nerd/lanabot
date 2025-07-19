@@ -41,7 +41,7 @@ class OpenAIClient:
             logger.error(f"Error transcribing audio: {e}")
             return None
 
-    async def process_ticket_image(self, image_file_path: str) -> Optional[str]:
+    async def process_ticket_image(self, image_file_path: str) -> Optional["ProcessedTransaction"]:
         """Process ticket image to extract transaction information using GPT-4o Vision."""
         try:
             import base64
@@ -53,26 +53,37 @@ class OpenAIClient:
             
             # Prompt for ticket analysis
             system_prompt = """
-Eres un experto en leer tickets de compra mexicanos. Tu trabajo es extraer información de transacciones.
+Eres un experto en leer tickets mexicanos para tenderos. Tu trabajo es extraer información y clasificar con alta precisión.
 
-INSTRUCCIONES:
-1. Lee el ticket y identifica si es una COMPRA (gasto) o VENTA (ingreso)
-2. Extrae el TOTAL en pesos mexicanos
-3. Describe brevemente QUÉ se compró/vendió
-4. Asigna nivel de CONFIANZA (0.0 a 1.0)
+REGLAS DE CLASIFICACIÓN:
+1. GASTO (alta confianza 0.9+):
+   - Tickets de: OXXO, Walmart, Soriana, Chedraui, Costco, Sam's Club
+   - Tickets de: Coca-Cola, Bimbo, Sabritas, Modelo, etc.
+   - Tickets de gasolineras (Pemex, Shell, BP)
+   - Tickets de mayoristas o distribuidores
+
+2. VENTA (alta confianza 0.9+):
+   - Tickets con logo/nombre de tienda local pequeña
+   - Layout de punto de venta básico
+   - Sin códigos de barras de grandes cadenas
+
+3. DUDOSO (confianza 0.3-0.6):
+   - Tickets borrosos o poco legibles
+   - Sin identificación clara del establecimiento
+   - Tickets de servicios (luz, agua, teléfono)
 
 FORMATO DE RESPUESTA (JSON EXACTO):
 {
     "transaction_type": "venta" o "gasto",
     "amount": número decimal del total,
-    "description": "descripción de productos/servicios",
+    "description": "descripción breve",
     "confidence": número entre 0.0 y 1.0
 }
 
-IMPORTANTE:
-- La mayoría de tickets son GASTOS (compras)
-- Busca palabras como "TOTAL", "IMPORTE", "$"
-- Si no puedes leer el ticket claramente, responde con null
+IMPORTANTE: 
+- Extrae siempre el TOTAL más claro
+- Confianza 0.9+ solo si es MUY obvio
+- Si dudas, asigna confianza 0.3-0.6
 """
 
             response = await self.client.chat.completions.create(
@@ -114,8 +125,16 @@ IMPORTANTE:
             import json
             try:
                 data = json.loads(json_str)
-                # Return as text for compatibility with existing process_transaction_text
-                return f"{data['transaction_type']} de {data['description']} por {data['amount']} pesos"
+                # Return ProcessedTransaction directly
+                from .models import ProcessedTransaction, TransactionType
+                from decimal import Decimal
+                
+                return ProcessedTransaction(
+                    transaction_type=TransactionType(data["transaction_type"]),
+                    amount=Decimal(str(data["amount"])),
+                    description=data["description"],
+                    confidence=float(data["confidence"]),
+                )
             except (json.JSONDecodeError, KeyError, ValueError) as e:
                 logger.error(f"Error parsing Vision response: {e}")
                 return None

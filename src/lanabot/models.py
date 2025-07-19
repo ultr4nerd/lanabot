@@ -53,6 +53,17 @@ class ProcessedTransaction(BaseModel):
     confidence: float = Field(..., ge=0, le=1, description="AI confidence score")
 
 
+class PendingTransaction(BaseModel):
+    """Pending transaction waiting for user confirmation."""
+    
+    phone_number: str = Field(..., description="User phone number")
+    transaction_type: TransactionType = Field(..., description="Suggested transaction type")
+    amount: Decimal = Field(..., gt=0, description="Transaction amount")
+    description: str = Field(..., description="Transaction description")
+    suggested_at: datetime = Field(..., description="When suggestion was made")
+    expires_at: datetime = Field(..., description="When suggestion expires")
+
+
 class Balance(BaseModel):
     """Account balance model."""
 

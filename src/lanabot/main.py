@@ -13,6 +13,7 @@ from .database import DatabaseManager
 from .models import Transaction, WhatsAppMessage, WhatsAppWebhook
 from .openai_client import OpenAIClient
 from .whatsapp_client import WhatsAppClient
+from .pending_manager import pending_manager
 
 # Configure logging
 logging.basicConfig(
@@ -120,9 +121,148 @@ async def webhook_handler(request: Request):
 #     pass
 
 
+async def handle_processed_transaction(phone_number: str, processed_transaction) -> None:
+    """Handle a processed transaction based on confidence level."""
+    try:
+        confidence = processed_transaction.confidence
+        
+        if confidence >= 0.8:
+            # High confidence - auto-process with confirmation option
+            await process_transaction_with_confirmation(phone_number, processed_transaction)
+        else:
+            # Low confidence - ask for clarification
+            pending_manager.add_pending(phone_number, processed_transaction)
+            
+            transaction_type_es = "VENTA" if processed_transaction.transaction_type.value == "venta" else "GASTO"
+            
+            await app.state.whatsapp_client.send_message(
+                phone_number,
+                f"📊 Leí ${processed_transaction.amount} en el ticket ({processed_transaction.description})\n\n"
+                f"¿Es una {transaction_type_es} o lo contrario?\n"
+                f"Responde: VENTA o GASTO"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error handling processed transaction: {e}")
+
+
+async def process_transaction_with_confirmation(phone_number: str, processed_transaction) -> None:
+    """Process transaction and offer correction option."""
+    try:
+        # Create and save transaction
+        transaction = Transaction(
+            phone_number=phone_number,
+            transaction_type=processed_transaction.transaction_type,
+            amount=processed_transaction.amount,
+            description=processed_transaction.description,
+        )
+        
+        saved_transaction = await app.state.db.create_transaction(transaction)
+        logger.info(f"Transaction created with confirmation: {saved_transaction}")
+        
+        # Get updated balance
+        balance = await app.state.db.get_balance(phone_number)
+        
+        # Generate response with correction option
+        transaction_type_es = "VENTA" if processed_transaction.transaction_type.value == "venta" else "GASTO"
+        opposite_type = "GASTO" if processed_transaction.transaction_type.value == "venta" else "VENTA"
+        
+        response_message = f"""✅ Registré {transaction_type_es} de ${processed_transaction.amount} ({processed_transaction.description})
+
+💰 Saldo actual: ${balance.current_balance:.2f} MXN
+📈 Total ventas: ${balance.total_sales:.2f}
+📉 Total gastos: ${balance.total_expenses:.2f}
+
+❌ ¿Está mal? Responde {opposite_type} para corregir"""
+
+        # Send response
+        await app.state.whatsapp_client.send_message(phone_number, response_message)
+        
+        # Store transaction ID for potential correction
+        pending_manager.add_pending(phone_number, processed_transaction)
+        
+        # Check for low balance alert
+        if await app.state.db.check_low_balance_alert(phone_number):
+            alert_message = f"🚨 ¡Aguas! Tu saldo está muy bajo: ${balance.current_balance:.2f}. Considera hacer más ventas o reducir gastos."
+            await app.state.whatsapp_client.send_message(phone_number, alert_message)
+            
+    except Exception as e:
+        logger.error(f"Error processing transaction with confirmation: {e}")
+
+
+def is_correction_command(text: str) -> Optional[str]:
+    """Check if text is a correction command and return the type."""
+    text_clean = text.strip().lower()
+    
+    if text_clean in ["venta", "vendí", "vendi", "es venta"]:
+        return "venta"
+    elif text_clean in ["gasto", "compra", "compre", "compré", "es gasto"]:
+        return "gasto"
+    
+    return None
+
+
+async def handle_transaction_correction(phone_number: str, correction_type: str) -> None:
+    """Handle transaction type correction."""
+    try:
+        pending = pending_manager.get_pending(phone_number)
+        if not pending:
+            await app.state.whatsapp_client.send_message(
+                phone_number,
+                "No hay transacciones pendientes de corrección 🤔"
+            )
+            return
+        
+        # Remove from pending
+        pending_manager.remove_pending(phone_number)
+        
+        from .models import TransactionType
+        new_type = TransactionType(correction_type)
+        
+        # Create corrected transaction
+        transaction = Transaction(
+            phone_number=phone_number,
+            transaction_type=new_type,
+            amount=pending.amount,
+            description=pending.description,
+        )
+        
+        saved_transaction = await app.state.db.create_transaction(transaction)
+        logger.info(f"Corrected transaction created: {saved_transaction}")
+        
+        # Get updated balance
+        balance = await app.state.db.get_balance(phone_number)
+        
+        # Generate response
+        transaction_type_es = "VENTA" if correction_type == "venta" else "GASTO"
+        
+        response_message = f"""✅ Corregido a {transaction_type_es} de ${pending.amount} ({pending.description})
+
+💰 Saldo actual: ${balance.current_balance:.2f} MXN
+📈 Total ventas: ${balance.total_sales:.2f}
+📉 Total gastos: ${balance.total_expenses:.2f}"""
+
+        await app.state.whatsapp_client.send_message(phone_number, response_message)
+        
+        # Check for low balance alert
+        if await app.state.db.check_low_balance_alert(phone_number):
+            alert_message = f"🚨 ¡Aguas! Tu saldo está muy bajo: ${balance.current_balance:.2f}. Considera hacer más ventas o reducir gastos."
+            await app.state.whatsapp_client.send_message(phone_number, alert_message)
+            
+    except Exception as e:
+        logger.error(f"Error handling transaction correction: {e}")
+
+
 async def process_message(message: WhatsAppMessage) -> None:
     """Process a WhatsApp message and handle transaction logic."""
     try:
+        # First check if this is a correction command
+        if message.message_type == "text" and message.content:
+            correction_type = is_correction_command(message.content)
+            if correction_type and pending_manager.has_pending(message.from_number):
+                await handle_transaction_correction(message.from_number, correction_type)
+                return
+        
         text_to_process = message.content
         
         # If it's an audio message, transcribe it first
@@ -184,7 +324,7 @@ async def process_message(message: WhatsAppMessage) -> None:
                 return
             
             try:
-                text_to_process = await app.state.openai_client.process_ticket_image(
+                processed_transaction = await app.state.openai_client.process_ticket_image(
                     image_file_path
                 )
                 
@@ -194,6 +334,17 @@ async def process_message(message: WhatsAppMessage) -> None:
                     os.unlink(image_file_path)
                 except Exception:
                     pass  # Ignore cleanup errors
+                
+                if not processed_transaction:
+                    await app.state.whatsapp_client.send_message(
+                        message.from_number,
+                        "No pude encontrar información de compra en esta imagen. ¿Puedes tomar otra foto del ticket? 🧾",
+                    )
+                    return
+                
+                # Handle based on confidence level
+                await handle_processed_transaction(message.from_number, processed_transaction)
+                return
                 
             except Exception as e:
                 logger.error(f"Error processing ticket image: {e}")
@@ -207,13 +358,6 @@ async def process_message(message: WhatsAppMessage) -> None:
                 await app.state.whatsapp_client.send_message(
                     message.from_number,
                     "¡Órale! No pude leer el ticket. ¿Puedes tomar otra foto más clara? 📸",
-                )
-                return
-            
-            if not text_to_process:
-                await app.state.whatsapp_client.send_message(
-                    message.from_number,
-                    "No pude encontrar información de compra en esta imagen. ¿Puedes tomar otra foto del ticket? 🧾",
                 )
                 return
         
@@ -239,51 +383,8 @@ async def process_message(message: WhatsAppMessage) -> None:
             )
             return
         
-        # Only process transactions with high confidence
-        if processed_transaction.confidence < 0.7:
-            await app.state.whatsapp_client.send_message(
-                message.from_number,
-                f"¿Seguro que entendí bien? Parece que {processed_transaction.transaction_type.value} {processed_transaction.description} por ${processed_transaction.amount}. Si es correcto, manda 'sí' 🤨",
-            )
-            return
-        
-        # Create transaction
-        transaction = Transaction(
-            phone_number=message.from_number,
-            transaction_type=processed_transaction.transaction_type,
-            amount=processed_transaction.amount,
-            description=processed_transaction.description,
-        )
-        
-        # Save to database
-        saved_transaction = await app.state.db.create_transaction(transaction)
-        logger.info(f"Transaction created: {saved_transaction}")
-        
-        # Get updated balance
-        balance = await app.state.db.get_balance(message.from_number)
-        
-        # Generate response message
-        balance_info = {
-            "current_balance": balance.current_balance,
-            "total_sales": balance.total_sales,
-            "total_expenses": balance.total_expenses,
-        }
-        
-        response_message = await app.state.openai_client.generate_response_message(
-            balance_info, transaction_added=True
-        )
-        
-        # Send response
-        await app.state.whatsapp_client.send_message(
-            message.from_number, response_message
-        )
-        
-        # Check for low balance alert
-        if await app.state.db.check_low_balance_alert(message.from_number):
-            alert_message = f"🚨 ¡Aguas! Tu saldo está muy bajo: ${balance.current_balance:.2f}. Considera hacer más ventas o reducir gastos."
-            await app.state.whatsapp_client.send_message(
-                message.from_number, alert_message
-            )
+        # Handle transaction with new smart confirmation flow
+        await handle_processed_transaction(message.from_number, processed_transaction)
     
     except Exception as e:
         logger.error(f"Error processing message {message.message_id}: {e}")
