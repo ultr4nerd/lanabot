@@ -114,9 +114,21 @@ if __name__ == "__main__":
             else:
                 print(f"\n⚠️  Generated token but it doesn't seem to work for WhatsApp API")
         else:
-            print(f"\n💡 Alternative: Go to Meta Developers Console:")
+            print(f"\n💡 REQUIRED: Get user access token from Meta Developers Console:")
             print(f"   1. Visit: https://developers.facebook.com/apps/{get_settings().meta_app_id}/whatsapp-business/wa-dev-console/")
-            print(f"   2. Generate a new temporary access token")
-            print(f"   3. Update your .env file")
+            print(f"   2. Look for 'Temporary access token' section")
+            print(f"   3. Click 'Generate Token' (this creates a USER access token)")
+            print(f"   4. Copy the token (starts with EAAA...)")
+            print(f"   5. Update META_ACCESS_TOKEN in your .env file") 
+            print(f"   6. Restart your application")
+            print(f"\n🔍 Current token format: {'User token' if get_settings().meta_access_token.startswith('EAAA') else 'App token (needs replacement)'}")
+            
+            # Check current token type
+            current_token = get_settings().meta_access_token
+            if '|' in current_token:
+                print(f"⚠️  You're using an APP access token: {current_token[:20]}...")
+                print(f"   WhatsApp Business API requires USER access tokens (start with EAAA)")
+            else:
+                print(f"✅ Token format looks correct: {current_token[:20]}...")
     
     asyncio.run(main())

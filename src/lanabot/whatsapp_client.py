@@ -54,8 +54,14 @@ class WhatsAppClient:
     async def _refresh_access_token(self) -> bool:
         """Refresh the Meta access token using app credentials."""
         try:
-            # For WhatsApp Business API, we can generate a new access token using app credentials
-            # This requires the App ID and App Secret
+            logger.warning("⚠️  Automatic token refresh attempted, but WhatsApp Business API requires user access tokens")
+            logger.warning("📋 Please manually update your token from Meta Developers Console:")
+            logger.warning(f"   1. Visit: https://developers.facebook.com/apps/{self.settings.meta_app_id}/whatsapp-business/wa-dev-console/")
+            logger.warning("   2. Generate a new temporary access token")
+            logger.warning("   3. Update META_ACCESS_TOKEN in your .env file")
+            logger.warning("   4. Restart the application")
+            
+            # Still try the app token approach as fallback, but don't expect it to work for WhatsApp
             url = f"https://graph.facebook.com/oauth/access_token"
             
             params = {
@@ -72,15 +78,24 @@ class WhatsAppClient:
                 new_token = data.get("access_token")
                 
                 if new_token:
-                    self._access_token = new_token
-                    # App access tokens don't expire, but we'll set a refresh time anyway
-                    self._token_expires_at = datetime.utcnow() + timedelta(days=30)
+                    # Test if this token actually works for WhatsApp
+                    test_url = f"{self.base_url}/{self.settings.meta_phone_number_id}"
+                    test_headers = {"Authorization": f"Bearer {new_token}"}
                     
-                    # Update headers with new token
-                    self.headers["Authorization"] = f"Bearer {self._access_token}"
+                    async with httpx.AsyncClient() as client:
+                        test_response = await client.get(test_url, headers=test_headers)
                     
-                    logger.info("Successfully refreshed Meta access token")
-                    return True
+                    if test_response.status_code == 200:
+                        # Token works! Update it
+                        self._access_token = new_token
+                        self._token_expires_at = datetime.utcnow() + timedelta(days=30)
+                        self.headers["Authorization"] = f"Bearer {self._access_token}"
+                        logger.info("✅ Successfully refreshed Meta access token (app token works!)")
+                        return True
+                    else:
+                        logger.error(f"❌ Generated app token doesn't work for WhatsApp: {test_response.status_code}")
+                        logger.error("🔧 Manual token update required from Meta Developers Console")
+                        return False
                 else:
                     logger.error("No access token in refresh response")
                     return False
@@ -95,21 +110,30 @@ class WhatsAppClient:
     async def _ensure_valid_token(self) -> bool:
         """Ensure we have a valid access token, refreshing if necessary."""
         try:
-            # If we don't have an expiration time, assume token might be stale
+            # If we don't have an expiration time, assume token might be stale but proceed
+            # WhatsApp tokens typically need manual refresh from console
             if self._token_expires_at is None:
-                logger.info("No token expiration time set, attempting refresh")
-                return await self._refresh_access_token()
+                logger.info("No token expiration time set, proceeding with current token")
+                # Set a far future date to avoid repeated refresh attempts
+                self._token_expires_at = datetime.utcnow() + timedelta(days=30)
+                return True
             
-            # If token is about to expire (within 1 hour), refresh it
+            # If token is about to expire (within 1 hour), try to refresh it
             if datetime.utcnow() + timedelta(hours=1) >= self._token_expires_at:
-                logger.info("Token expiring soon, refreshing")
-                return await self._refresh_access_token()
+                logger.info("Token expiring soon, attempting refresh")
+                success = await self._refresh_access_token()
+                if not success:
+                    # Even if refresh failed, continue with current token
+                    # It might still work, and we'll handle errors at the API level
+                    logger.warning("Token refresh failed, continuing with current token")
+                    return True
+                return success
             
             return True
             
         except Exception as e:
             logger.error(f"Error checking token validity: {e}")
-            return False
+            return True  # Continue anyway, handle errors at API level
 
     async def send_message(self, to: str, message: str) -> bool:
         """Send a text message via WhatsApp using Meta Cloud API."""
