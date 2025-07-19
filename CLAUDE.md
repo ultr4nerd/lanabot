@@ -84,6 +84,26 @@ Required variables in `.env` (see `.env.example`):
 - WhatsApp Cloud API tokens
 - Business logic settings (minimum balance alert threshold)
 
+### Token Management
+WhatsApp Business API tokens expire regularly. When tokens expire:
+
+1. **Manual Token Refresh**:
+   ```bash
+   # Run the token refresh script to diagnose issues
+   uv run python refresh_token.py
+   ```
+
+2. **Meta Developers Console** (Recommended):
+   - Visit: https://developers.facebook.com/apps/{APP_ID}/whatsapp-business/wa-dev-console/
+   - Generate a new temporary access token
+   - Update `.env` file with `META_ACCESS_TOKEN=new_token`
+   - Restart the application
+
+3. **Automatic Refresh** (implemented):
+   - The WhatsApp client automatically detects 401 errors
+   - Attempts token refresh and retries failed requests
+   - Falls back to template messages when needed
+
 ### Key Features
 - Processes Mexican Spanish colloquial expressions
 - Transcribes WhatsApp voice messages to text

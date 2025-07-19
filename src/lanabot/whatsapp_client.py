@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import logging
 import tempfile
+from datetime import datetime, timedelta
 
 import httpx
 
@@ -20,8 +21,10 @@ class WhatsAppClient:
         """Initialize Meta WhatsApp client."""
         self.settings = get_settings()
         self.base_url = "https://graph.facebook.com/v18.0"
+        self._access_token = self.settings.meta_access_token
+        self._token_expires_at = None
         self.headers = {
-            "Authorization": f"Bearer {self.settings.meta_access_token}",
+            "Authorization": f"Bearer {self._access_token}",
             "Content-Type": "application/json"
         }
 
@@ -48,9 +51,74 @@ class WhatsAppClient:
             # Return as-is if format is unclear
             return clean_number
 
+    async def _refresh_access_token(self) -> bool:
+        """Refresh the Meta access token using app credentials."""
+        try:
+            # For WhatsApp Business API, we can generate a new access token using app credentials
+            # This requires the App ID and App Secret
+            url = f"https://graph.facebook.com/oauth/access_token"
+            
+            params = {
+                "grant_type": "client_credentials",
+                "client_id": self.settings.meta_app_id,
+                "client_secret": self.settings.meta_app_secret
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params)
+            
+            if response.status_code == 200:
+                data = response.json()
+                new_token = data.get("access_token")
+                
+                if new_token:
+                    self._access_token = new_token
+                    # App access tokens don't expire, but we'll set a refresh time anyway
+                    self._token_expires_at = datetime.utcnow() + timedelta(days=30)
+                    
+                    # Update headers with new token
+                    self.headers["Authorization"] = f"Bearer {self._access_token}"
+                    
+                    logger.info("Successfully refreshed Meta access token")
+                    return True
+                else:
+                    logger.error("No access token in refresh response")
+                    return False
+            else:
+                logger.error(f"Failed to refresh token: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error refreshing access token: {e}")
+            return False
+
+    async def _ensure_valid_token(self) -> bool:
+        """Ensure we have a valid access token, refreshing if necessary."""
+        try:
+            # If we don't have an expiration time, assume token might be stale
+            if self._token_expires_at is None:
+                logger.info("No token expiration time set, attempting refresh")
+                return await self._refresh_access_token()
+            
+            # If token is about to expire (within 1 hour), refresh it
+            if datetime.utcnow() + timedelta(hours=1) >= self._token_expires_at:
+                logger.info("Token expiring soon, refreshing")
+                return await self._refresh_access_token()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking token validity: {e}")
+            return False
+
     async def send_message(self, to: str, message: str) -> bool:
         """Send a text message via WhatsApp using Meta Cloud API."""
         try:
+            # Ensure we have a valid token
+            if not await self._ensure_valid_token():
+                logger.error("Failed to ensure valid access token")
+                return False
+
             # Remove whatsapp: prefix if present and normalize format
             phone_number = to.replace("whatsapp:", "").replace("+", "")
             phone_number = self.normalize_mexican_phone_number(phone_number)
@@ -74,6 +142,25 @@ class WhatsAppClient:
                 message_id = result.get("messages", [{}])[0].get("id")
                 logger.info(f"Message sent successfully to {to} (normalized: {phone_number}): {message_id}")
                 return True
+            elif response.status_code == 401:
+                # Token expired, try to refresh and retry once
+                logger.warning("Received 401, attempting token refresh and retry")
+                if await self._refresh_access_token():
+                    # Retry the request with new token
+                    async with httpx.AsyncClient() as client:
+                        response = await client.post(url, headers=self.headers, json=payload)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        message_id = result.get("messages", [{}])[0].get("id")
+                        logger.info(f"Message sent successfully after token refresh to {to}: {message_id}")
+                        return True
+                    else:
+                        logger.error(f"Still failed after token refresh: {response.status_code} - {response.text}")
+                        return False
+                else:
+                    logger.error("Failed to refresh token after 401 error")
+                    return False
             else:
                 # If it's a "not in allowed list" error, try template fallback
                 error_text = response.text
@@ -91,6 +178,11 @@ class WhatsAppClient:
     async def send_template_message(self, to: str, original_message: str) -> bool:
         """Send a template message as fallback when free-form messages fail."""
         try:
+            # Ensure we have a valid token
+            if not await self._ensure_valid_token():
+                logger.error("Failed to ensure valid access token for template")
+                return False
+
             # Remove whatsapp: prefix if present and normalize format
             phone_number = to.replace("whatsapp:", "").replace("+", "")
             phone_number = self.normalize_mexican_phone_number(phone_number)
@@ -206,6 +298,11 @@ class WhatsAppClient:
     async def download_media(self, media_id: str) -> str | None:
         """Download media file from Meta and return local path."""
         try:
+            # Ensure we have a valid token
+            if not await self._ensure_valid_token():
+                logger.error("Failed to ensure valid access token for media download")
+                return None
+
             logger.info(f"Downloading media from Meta: {media_id}")
 
             # Get media info first
