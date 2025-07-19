@@ -83,10 +83,15 @@ async def webhook_handler(request: Request):
         # Determine message type
         message_type = "text"
         audio_url = None
+        image_url = None
         
-        if media_url and "audio" in media_content_type:
-            message_type = "audio"
-            audio_url = media_url
+        if media_url:
+            if "audio" in media_content_type:
+                message_type = "audio"
+                audio_url = media_url
+            elif "image" in media_content_type:
+                message_type = "image"
+                image_url = media_url
         
         # Create WhatsApp message object
         whatsapp_message = WhatsAppMessage(
@@ -95,6 +100,7 @@ async def webhook_handler(request: Request):
             message_type=message_type,
             content=message_body if message_type == "text" else None,
             audio_url=audio_url,
+            image_url=image_url,
             timestamp=datetime.utcnow(),
         )
         
@@ -162,6 +168,52 @@ async def process_message(message: WhatsAppMessage) -> None:
                 await app.state.whatsapp_client.send_message(
                     message.from_number,
                     "¡Órale! No pude entender el audio. ¿Puedes intentar de nuevo o escribir tu mensaje? 🎤",
+                )
+                return
+                
+        # If it's an image message, process the ticket
+        elif message.message_type == "image" and message.image_url:
+            # Download the image file from Twilio
+            image_file_path = await app.state.whatsapp_client.download_media(message.image_url)
+            
+            if not image_file_path:
+                await app.state.whatsapp_client.send_message(
+                    message.from_number,
+                    "¡Órale! No pude descargar la imagen. ¿Puedes intentar de nuevo? 📸",
+                )
+                return
+            
+            try:
+                text_to_process = await app.state.openai_client.process_ticket_image(
+                    image_file_path
+                )
+                
+                # Clean up temporary file
+                import os
+                try:
+                    os.unlink(image_file_path)
+                except Exception:
+                    pass  # Ignore cleanup errors
+                
+            except Exception as e:
+                logger.error(f"Error processing ticket image: {e}")
+                # Clean up temporary file on error too
+                import os
+                try:
+                    os.unlink(image_file_path)
+                except Exception:
+                    pass
+                
+                await app.state.whatsapp_client.send_message(
+                    message.from_number,
+                    "¡Órale! No pude leer el ticket. ¿Puedes tomar otra foto más clara? 📸",
+                )
+                return
+            
+            if not text_to_process:
+                await app.state.whatsapp_client.send_message(
+                    message.from_number,
+                    "No pude encontrar información de compra en esta imagen. ¿Puedes tomar otra foto del ticket? 🧾",
                 )
                 return
         

@@ -68,12 +68,19 @@ class WhatsAppClient:
                 audio_content = response.content
                 logger.info(f"Downloaded media successfully: {len(audio_content)} bytes")
                 
-                # For now, we'll write it to a temp file and return the path
-                # In production, you might want to upload to cloud storage
+                # Write to temp file with appropriate extension
                 import tempfile
                 import os
                 
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as temp_file:
+                # Determine file extension from URL or content type
+                if 'image' in media_url or any(fmt in media_url.lower() for fmt in ['.jpg', '.jpeg', '.png']):
+                    suffix = '.jpg'
+                elif 'audio' in media_url or '.ogg' in media_url.lower():
+                    suffix = '.ogg'
+                else:
+                    suffix = '.bin'  # fallback
+                
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
                     temp_file.write(audio_content)
                     temp_path = temp_file.name
                 

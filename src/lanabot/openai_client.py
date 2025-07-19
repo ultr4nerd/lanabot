@@ -41,6 +41,89 @@ class OpenAIClient:
             logger.error(f"Error transcribing audio: {e}")
             return None
 
+    async def process_ticket_image(self, image_file_path: str) -> Optional[str]:
+        """Process ticket image to extract transaction information using GPT-4o Vision."""
+        try:
+            import base64
+            
+            # Read and encode image
+            with open(image_file_path, "rb") as image_file:
+                image_data = image_file.read()
+                image_base64 = base64.b64encode(image_data).decode('utf-8')
+            
+            # Prompt for ticket analysis
+            system_prompt = """
+Eres un experto en leer tickets de compra mexicanos. Tu trabajo es extraer información de transacciones.
+
+INSTRUCCIONES:
+1. Lee el ticket y identifica si es una COMPRA (gasto) o VENTA (ingreso)
+2. Extrae el TOTAL en pesos mexicanos
+3. Describe brevemente QUÉ se compró/vendió
+4. Asigna nivel de CONFIANZA (0.0 a 1.0)
+
+FORMATO DE RESPUESTA (JSON EXACTO):
+{
+    "transaction_type": "venta" o "gasto",
+    "amount": número decimal del total,
+    "description": "descripción de productos/servicios",
+    "confidence": número entre 0.0 y 1.0
+}
+
+IMPORTANTE:
+- La mayoría de tickets son GASTOS (compras)
+- Busca palabras como "TOTAL", "IMPORTE", "$"
+- Si no puedes leer el ticket claramente, responde con null
+"""
+
+            response = await self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Analiza este ticket de compra:"},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{image_base64}"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                temperature=0.1,
+                max_tokens=300,
+            )
+
+            content = response.choices[0].message.content
+            logger.info(f"GPT-4o Vision response: {content}")
+
+            if not content or content.strip().lower() == "null":
+                return None
+
+            # Clean up and extract JSON
+            content = content.strip()
+            import re
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+            else:
+                json_str = content
+
+            import json
+            try:
+                data = json.loads(json_str)
+                # Return as text for compatibility with existing process_transaction_text
+                return f"{data['transaction_type']} de {data['description']} por {data['amount']} pesos"
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                logger.error(f"Error parsing Vision response: {e}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error processing ticket image: {e}")
+            return None
+
     async def process_transaction_text(self, text: str) -> Optional[ProcessedTransaction]:
         """Process text to extract transaction information using GPT-4o."""
         try:

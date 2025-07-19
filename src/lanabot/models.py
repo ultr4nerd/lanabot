@@ -37,9 +37,10 @@ class WhatsAppMessage(BaseModel):
 
     message_id: str = Field(..., description="WhatsApp message ID")
     from_number: str = Field(..., description="Sender phone number")
-    message_type: str = Field(..., description="Message type (text, audio, etc.)")
+    message_type: str = Field(..., description="Message type (text, audio, image)")
     content: Optional[str] = Field(None, description="Text content")
     audio_url: Optional[str] = Field(None, description="Audio file URL")
+    image_url: Optional[str] = Field(None, description="Image file URL")
     timestamp: datetime = Field(..., description="Message timestamp")
 
 
