@@ -75,6 +75,8 @@ class DatabaseManager:
     async def get_balance(self, phone_number: str) -> Balance:
         """Get current balance for a phone number."""
         try:
+            logger.info(f"Getting balance for phone_number: '{phone_number}'")
+            
             # Get all transactions for this phone number
             result = (
                 self.client.table("transactions")
@@ -84,6 +86,14 @@ class DatabaseManager:
             )
 
             transactions = result.data
+            logger.info(f"Found {len(transactions)} transactions for {phone_number}")
+            
+            if transactions:
+                logger.info(f"Sample transaction: {transactions[0]}")
+            else:
+                # Check if there are ANY transactions in the table
+                all_result = self.client.table("transactions").select("phone_number").execute()
+                logger.info(f"All phone numbers in DB: {[t['phone_number'] for t in all_result.data]}")
 
             total_sales = Decimal("0")
             total_expenses = Decimal("0")
